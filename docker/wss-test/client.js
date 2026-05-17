@@ -506,6 +506,49 @@ async function testDepinUnknownMethod() {
   });
 }
 
+async function testWsPingRoundtrip() {
+  const res = await connect();
+  if (res.status !== "open") return fail("ws ping: open", `status=${res.status}`);
+  try {
+    await rpc(res.ws, {
+      id: 880,
+      method: "hello",
+      params: { protocol: "wss-push/1", client: "wss-test" },
+    });
+    const got = await new Promise((resolve) => {
+      const t = setTimeout(() => resolve(false), 3000);
+      res.ws.once("pong", () => { clearTimeout(t); resolve(true); });
+      try { res.ws.ping("k"); } catch { clearTimeout(t); resolve(false); }
+    });
+    if (got) ok("WS-frame ping → server auto-pong roundtrip");
+    else fail("ws ping", "no pong from server within 3s");
+  } finally {
+    try { res.ws.terminate(); } catch {}
+  }
+}
+
+async function testKeepaliveDoesntKillIdle() {
+  const IDLE_MS = 3000;
+  const res = await connect();
+  if (res.status !== "open") return fail("keepalive idle: open", `status=${res.status}`);
+  let closed = false;
+  res.ws.on("close", () => { closed = true; });
+  try {
+    await rpc(res.ws, {
+      id: 881,
+      method: "hello",
+      params: { protocol: "wss-push/1", client: "wss-test" },
+    });
+    await delay(IDLE_MS);
+    if (closed) return fail("keepalive idle", `connection closed during ${IDLE_MS}ms idle`);
+    const r = await rpc(res.ws, { id: 882, method: "ping" });
+    if (r.result === "pong") ok(`keepalive: alive after ${IDLE_MS}ms idle, ping still works`);
+    else fail("keepalive idle: ping after idle", JSON.stringify(r));
+  } finally {
+    try { res.ws.terminate(); } catch {}
+  }
+}
+
 async function testBurst() {
   await delay(1100); // wait past the rate-limit window from prior tests
   const promises = [];
@@ -564,6 +607,8 @@ async function testBurst() {
   await testGetStateUtxoCursor();
   await testGetStateUtxoLimitAll();
   await testGetStateInvalidUtxoCursor();
+  await testWsPingRoundtrip();
+  await testKeepaliveDoesntKillIdle();
   await testBurst();
 
   console.log("");

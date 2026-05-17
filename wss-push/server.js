@@ -14,6 +14,7 @@ const prevoutCache = require("./prevout-cache");
 const zmqWatcher = require("./zmq-watcher");
 const poller = require("./poller");
 const nodeHealth = require("./node-health");
+const keepalive = require("./keepalive");
 
 const MAX_PAYLOAD_BYTES = 64 * 1024;
 
@@ -220,6 +221,7 @@ function start(config, ctx) {
 
   wss.on("connection", (ws, req) => {
     const session = sessionMod.createSession(ws, clientIp(req));
+    keepalive.start(ws, session, config);
 
     ws.on("message", async (raw) => {
       session.lastSeen = Date.now();
@@ -260,6 +262,7 @@ function start(config, ctx) {
     });
 
     ws.on("close", () => {
+      keepalive.stop(session);
       subscriptions.unsubscribeAll(session);
       sessionMod.destroySession(session);
     });

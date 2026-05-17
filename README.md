@@ -27,21 +27,23 @@ that speaks the same protocol.
 
 ## Status
 
-**Phases 1, 2, 3 + 4 implemented and verified against a live testnet node**:
+**Phases 1, 2, 3, 4 + 6 implemented and verified against a live testnet node**:
 
 - `hello`, `ping`
 - `address.subscribe`, `address.unsubscribe` (with initial state)
-- `address.get_state` with composite cursor pagination
+- `address.get_state` with composite cursor pagination (history + UTXOs)
 - `tx.broadcast`
 - `depin.*` — read-only and signed methods (with challenge cache)
 - Push events: `chain.tip`, `chain.reorg`, `address.changed`,
   `node.synced`, `node.syncing`
 - ZMQ subscriber (`zeromq` optional dep) + mempool polling fallback
 - Sync gating: methods that need a synced chain return `1008` with progress
+- WS-level ping/pong keepalive (configurable, default 25s interval / 10s timeout)
 - Auth, rate limit, session limits, cert hot-reload, block-index warmup
 
-Pending: assets (`assets: true | string[]` filter on subscribe + get_state),
-WS-frame keepalive, per-block "candidate addresses" refresh optimization.
+Pending: Fase 5 — assets (`assets: true | string[]` filter on subscribe +
+get_state). Optional improvements: per-block "candidate addresses" refresh,
+ZMQ reconnect resilience, bulk subscribe.
 
 ## Protocol overview
 
@@ -159,6 +161,36 @@ above this clamp silently to the cap unless `utxo_limit: 0`.
 
 The `asset` field is reserved for Fase 5 and currently must be `null` or
 `false` (native XNA only).
+
+### WS-level keepalive
+
+The server sends a WebSocket `ping` frame to every active session every
+`keepalive_interval_ms` (default **25s** — safely below the typical
+30-second NAT timeout that kills idle mobile WS connections). If the
+client doesn't respond with a `pong` within `keepalive_timeout_ms`
+(default **10s**), the server calls `ws.terminate()` and runs the normal
+close cleanup (`unsubscribeAll`, `destroySession`, `keepalive.stop`).
+
+Both values are configurable in `wss_push` config or via env:
+
+```
+PROXY_WSS_PUSH_KEEPALIVE_INTERVAL_MS=25000
+PROXY_WSS_PUSH_KEEPALIVE_TIMEOUT_MS=10000
+```
+
+Tuning hints:
+
+- **Lower `interval_ms`** (e.g. 15000) if your reverse proxy / NAT has an
+  aggressive idle timeout — when in doubt, halve it.
+- **Lower `timeout_ms`** (e.g. 5000) if you want faster dead-peer detection,
+  at the cost of being less tolerant of slow mobile networks.
+- **Raise `interval_ms`** (e.g. 60000) if you want to reduce traffic and
+  your network has no idle timeouts (LAN/datacenter only).
+
+The wallet doesn't need application-level handling — the `ws` client
+library auto-responds to ping frames. The application-level `ping` method
+(returning `"pong"`) is a separate request/response, useful for the wallet
+to actively verify the proxy is responsive.
 
 ### Server-to-client events
 
@@ -327,7 +359,8 @@ self-signed cert in-container at startup.
 │   ├── notifications.js      # broadcast() + notifyAddress() helpers
 │   ├── status.js             # stable status hash (fixed-order string)
 │   ├── rpc.js                # separate PQueue for WSS-originated RPCs
-│   ├── cursor.js             # opaque "height:tx_index" cursor codec
+│   ├── cursor.js             # opaque cursor codecs (history + utxo)
+│   ├── keepalive.js          # WS-level ping/pong per session
 │   ├── node-health.js        # getblockchaininfo poller + node.synced/syncing
 │   ├── chain-state.js        # tip + Map<height,hash> + lastStatus per address
 │   ├── chain-events.js       # onBlock/onRawTx orchestrator + warmup + reorg detection

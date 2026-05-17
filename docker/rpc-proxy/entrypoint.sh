@@ -25,6 +25,8 @@ set -eu
 : "${PROXY_WSS_PUSH_HISTORY_PAGE_LIMIT:=100}"
 : "${PROXY_WSS_PUSH_UTXO_PAGE_LIMIT:=1000}"
 : "${PROXY_WSS_PUSH_REORG_INVALIDATE_DEPTH:=60}"
+: "${PROXY_WSS_PUSH_KEEPALIVE_INTERVAL_MS:=25000}"
+: "${PROXY_WSS_PUSH_KEEPALIVE_TIMEOUT_MS:=10000}"
 : "${PROXY_ZMQ_ENDPOINT:=tcp://neuraid:28332}"
 
 if [ "${PROXY_WSS_PUSH_ENABLED}" = "true" ] \
@@ -66,6 +68,8 @@ cat > /app/config.json <<EOF
     "history_page_limit": ${PROXY_WSS_PUSH_HISTORY_PAGE_LIMIT},
     "utxo_page_limit": ${PROXY_WSS_PUSH_UTXO_PAGE_LIMIT},
     "reorg_invalidate_depth": ${PROXY_WSS_PUSH_REORG_INVALIDATE_DEPTH},
+    "keepalive_interval_ms": ${PROXY_WSS_PUSH_KEEPALIVE_INTERVAL_MS},
+    "keepalive_timeout_ms": ${PROXY_WSS_PUSH_KEEPALIVE_TIMEOUT_MS},
     "zmq_endpoint": "${PROXY_ZMQ_ENDPOINT}"
   },
   "nodes": [

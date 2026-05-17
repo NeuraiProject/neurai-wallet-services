@@ -60,6 +60,8 @@ function fillDefaults(cfg) {
     history_page_limit: cfg.history_page_limit || 100,
     utxo_page_limit: cfg.utxo_page_limit || 1000,
     reorg_invalidate_depth: cfg.reorg_invalidate_depth || 60,
+    keepalive_interval_ms: cfg.keepalive_interval_ms || 25000,
+    keepalive_timeout_ms: cfg.keepalive_timeout_ms || 10000,
     send_initial_state: cfg.send_initial_state !== false,
     zmq_enabled: cfg.zmq_enabled === true,
     zmq_endpoint: cfg.zmq_endpoint || null,

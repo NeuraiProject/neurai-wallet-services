@@ -55,7 +55,7 @@ services:
     volumes:
       - neurai_data:/data
 
-    # Internal-only — the node is not reachable from the host. The rpc-proxy
+    # Internal-only  the node is not reachable from the host. The rpc-proxy
     # container talks to neuraid:19101 over the neurai_net bridge. Use
     # `docker compose exec neuraid neurai-cli ...` for CLI access.
     expose:

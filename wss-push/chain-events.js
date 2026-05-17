@@ -248,12 +248,21 @@ async function onRawTx(rawtxBuffer) {
   if (!decoded || !decoded.txid) return;
 
   const touched = new Set();
+  // Track which assets this tx touched on subscribed addresses' outputs, so
+  // address.changed can include `delta.touched_assets` and the wallet can
+  // decide whether to refetch get_state with the right asset filter.
+  const touchedAssets = new Set();
 
   // Outputs: addresses are right there in the decoded tx.
   for (const vout of decoded.vout || []) {
     const spk = vout && vout.scriptPubKey;
     const addresses = spk && Array.isArray(spk.addresses) ? spk.addresses : [];
     const n = typeof vout.n === "number" ? vout.n : null;
+    // Asset transfer outputs carry scriptPubKey.asset = {name, amount}.
+    // Native outputs (type "pubkeyhash" / "scripthash") don't.
+    const assetName =
+      spk && spk.asset && typeof spk.asset.name === "string" ? spk.asset.name : null;
+    if (assetName) touchedAssets.add(assetName);
     for (const addr of addresses) {
       touched.add(addr);
       if (prevoutCache && n !== null) prevoutCache.set(decoded.txid, n, addr);
@@ -285,12 +294,16 @@ async function onRawTx(rawtxBuffer) {
   }
 
   // Notify subscribers of touched addresses with new status.
+  const assetsArray = Array.from(touchedAssets);
   const promises = [];
   for (const addr of touched) {
     const subs = subscriptions.getSubscribers(addr);
     if (subs && subs.size > 0) {
       promises.push(
-        refreshAddress(addr, "mempool", { added_txids: [decoded.txid] }),
+        refreshAddress(addr, "mempool", {
+          added_txids: [decoded.txid],
+          touched_assets: assetsArray,
+        }),
       );
     }
   }

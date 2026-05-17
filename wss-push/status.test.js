@@ -3,7 +3,7 @@ const { statusString, statusHash } = require("./status");
 
 test("empty state produces stable string", () => {
   const s = statusString({});
-  expect(s).toBe("balance.confirmed:0|balance.unconfirmed:0|mempool:|utxos:");
+  expect(s).toBe("balance.confirmed:0|balance.unconfirmed:0|mempool:|utxos:|assets:|asset_utxos:");
 });
 
 test("statusString does not include best block hash or height", () => {
@@ -42,7 +42,7 @@ test("native asset uses empty string", () => {
   const s = statusString({
     utxos: [{ txid: "aa", vout: 0, value: 100, asset: "" }],
   });
-  expect(s).toMatch(/utxos:aa:0:100:$/);
+  expect(s).toMatch(/utxos:aa:0:100:\|/);
 });
 
 test("statusHash returns sha256 hex of statusString", () => {
@@ -56,6 +56,48 @@ test("statusHash returns sha256 hex of statusString", () => {
     .update(statusString(state))
     .digest("hex");
   expect(statusHash(state)).toBe(expected);
+});
+
+test("statusString includes asset balances sorted by name", () => {
+  const s = statusString({
+    balance: { confirmed: 100, unconfirmed: 0 },
+    assets: {
+      BROM: { confirmed: 1000, unconfirmed: 0 },
+      TRON: { confirmed: 50000, unconfirmed: 200 },
+    },
+  });
+  expect(s).toMatch(/\|assets:BROM=1000,0;TRON=50000,200\|/);
+});
+
+test("statusString assets order is stable regardless of input order", () => {
+  const a = statusString({
+    assets: { B: { confirmed: 1, unconfirmed: 0 }, A: { confirmed: 2, unconfirmed: 0 } },
+  });
+  const b = statusString({
+    assets: { A: { confirmed: 2, unconfirmed: 0 }, B: { confirmed: 1, unconfirmed: 0 } },
+  });
+  expect(a).toBe(b);
+});
+
+test("statusString includes asset utxos sorted deterministically", () => {
+  const s = statusString({
+    assetUtxos: [
+      { txid: "bb", vout: 1, value: 100, asset: "TRON" },
+      { txid: "aa", vout: 0, value: 50, asset: "BROM" },
+    ],
+  });
+  expect(s).toMatch(/\|asset_utxos:BROM:aa:0:50,TRON:bb:1:100$/);
+});
+
+test("statusHash changes when assets change", () => {
+  const h1 = statusHash({
+    balance: { confirmed: 100, unconfirmed: 0 },
+  });
+  const h2 = statusHash({
+    balance: { confirmed: 100, unconfirmed: 0 },
+    assets: { TRON: { confirmed: 50, unconfirmed: 0 } },
+  });
+  expect(h1).not.toBe(h2);
 });
 
 test("statusHash is stable across equivalent inputs", () => {

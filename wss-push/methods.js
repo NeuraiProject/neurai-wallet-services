@@ -9,22 +9,101 @@ const nodeHealth = require("./node-health");
 const cursor = require("./cursor");
 const depin = require("./depin-methods");
 
+// Normalize the `assets` param into either:
+//   { kind: "none" }   — native XNA only (default)
+//   { kind: "all" }    — include every asset the address has
+//   { kind: "list", names: Set<string> } — include only these asset names
+// Throws MethodError(1003) for invalid input.
+function parseAssetsFilter(value) {
+  if (value == null || value === false) return { kind: "none" };
+  if (value === true) return { kind: "all" };
+  if (Array.isArray(value)) {
+    const names = new Set();
+    for (const n of value) {
+      if (typeof n !== "string" || n.length === 0) {
+        throw new MethodError(
+          ERROR_CODES.INVALID_PARAMS,
+          "assets array must contain non-empty asset name strings",
+        );
+      }
+      names.add(n);
+    }
+    return { kind: "list", names };
+  }
+  throw new MethodError(
+    ERROR_CODES.INVALID_PARAMS,
+    "assets must be true, false, or an array of asset names",
+  );
+}
+
+// Apply an asset filter to the full `state.assets` map fetched by
+// fetchAddressState. Returns the subset to include in the response.
+function projectAssets(assetsFromState, filter) {
+  if (filter.kind === "none") return null;
+  if (filter.kind === "all") return assetsFromState;
+  const out = {};
+  for (const name of filter.names) {
+    if (assetsFromState[name]) out[name] = assetsFromState[name];
+    else out[name] = { confirmed: 0, unconfirmed: 0 };
+  }
+  return out;
+}
+
+function projectAssetUtxos(assetUtxos, filter) {
+  if (filter.kind === "none") return [];
+  if (filter.kind === "all") return assetUtxos;
+  return assetUtxos.filter((u) => filter.names.has(u.assetName));
+}
+
+// Native asset name as Neurai's RPC reports it.
+const NATIVE_ASSET = "XNA";
+
 async function fetchAddressState(address) {
-  const [balanceRaw, mempoolRaw, utxosRaw] = await Promise.all([
-    callRPC("getaddressbalance", [{ addresses: [address] }]).catch(() => null),
+  // Always fetch native + all assets in parallel. The asset data feeds into
+  // the status hash so any asset change (not just native) will trigger an
+  // address.changed event downstream. Handlers may still filter what they
+  // return to the client based on the `assets` param.
+  const [balanceRaw, mempoolRaw, nativeUtxosRaw, assetUtxosRaw] = await Promise.all([
+    callRPC("getaddressbalance", [{ addresses: [address] }, true]).catch(() => null),
     callRPC("getaddressmempool", [{ addresses: [address] }]).catch(() => []),
     callRPC("getaddressutxos", [{ addresses: [address] }]).catch(() => []),
+    callRPC("getaddressutxos", [{ addresses: [address], assetName: "*" }]).catch(() => []),
   ]);
 
-  const confirmed = balanceRaw && typeof balanceRaw.balance === "number" ? balanceRaw.balance : 0;
-  let unconfirmed = 0;
-  const mempool = Array.isArray(mempoolRaw) ? mempoolRaw : [];
-  for (const m of mempool) {
-    if (typeof m.satoshis === "number") unconfirmed += m.satoshis;
+  // Native balance + per-asset balances. getaddressbalance with includeAssets
+  // returns an array of {assetName, balance, received}; XNA is the native.
+  let confirmedNative = 0;
+  const assets = {};
+  if (Array.isArray(balanceRaw)) {
+    for (const b of balanceRaw) {
+      if (!b || typeof b.balance !== "number") continue;
+      if (b.assetName === NATIVE_ASSET) {
+        confirmedNative = b.balance;
+      } else {
+        assets[b.assetName] = { confirmed: b.balance, unconfirmed: 0 };
+      }
+    }
   }
 
-  const utxos = Array.isArray(utxosRaw) ? utxosRaw : [];
+  // Native mempool — note: getaddressmempool returns native by default. Asset
+  // mempool entries would need a separate query with assetName; for now we
+  // capture native only. Asset mempool will be covered in a follow-up.
+  const mempool = Array.isArray(mempoolRaw) ? mempoolRaw : [];
+  let unconfirmedNative = 0;
+  for (const m of mempool) {
+    if (typeof m.satoshis === "number") unconfirmedNative += m.satoshis;
+  }
+
+  const utxos = Array.isArray(nativeUtxosRaw) ? nativeUtxosRaw : [];
   const utxosForHash = utxos.map((u) => ({
+    txid: u.txid,
+    vout: u.outputIndex,
+    value: u.satoshis,
+    asset: u.assetName || "",
+  }));
+
+  const assetUtxosRawArr = Array.isArray(assetUtxosRaw) ? assetUtxosRaw : [];
+  const assetUtxosForHash = assetUtxosRawArr.map((u) => ({
     txid: u.txid,
     vout: u.outputIndex,
     value: u.satoshis,
@@ -33,16 +112,23 @@ async function fetchAddressState(address) {
 
   const mempoolTxids = mempool.map((m) => m.txid);
 
+  const balance = { confirmed: confirmedNative, unconfirmed: unconfirmedNative };
+
   return {
-    balance: { confirmed, unconfirmed },
+    balance,
+    assets,
     mempool,
     mempoolTxids,
     utxos,
     utxosForHash,
+    assetUtxos: assetUtxosRawArr,
+    assetUtxosForHash,
     status: statusHash({
-      balance: { confirmed, unconfirmed },
+      balance,
       mempoolTxids,
       utxos: utxosForHash,
+      assets,
+      assetUtxos: assetUtxosForHash,
     }),
   };
 }
@@ -100,6 +186,7 @@ const handlers = {
       throw new MethodError(ERROR_CODES.INVALID_PARAMS, "address required");
     }
     const address = params.address;
+    const assetsFilter = parseAssetsFilter(params.assets);
 
     if (session.subs.size >= ctx.config.max_subscriptions_per_session) {
       throw new MethodError(ERROR_CODES.TOO_MANY_SUBS, "max subscriptions per session reached");
@@ -129,12 +216,15 @@ const handlers = {
       // best-effort
     }
 
-    return {
+    const response = {
       address,
       status: state.status,
       balance: state.balance,
       height,
     };
+    const projectedAssets = projectAssets(state.assets || {}, assetsFilter);
+    if (projectedAssets !== null) response.assets = projectedAssets;
+    return response;
   },
 
   "address.unsubscribe": async (session, params) => {
@@ -177,6 +267,10 @@ const handlers = {
       );
     }
 
+    // One asset filter applies to the whole batch — HD wallets fetch the same
+    // way for every derived address.
+    const assetsFilter = parseAssetsFilter(params.assets);
+
     // Fetch the chain tip once for the whole batch instead of per-address.
     let height = null;
     if (ctx.config.send_initial_state) {
@@ -210,12 +304,15 @@ const handlers = {
           }
           const state = await fetchAddressState(address);
           chainState.setLastStatus(address, state.status);
-          return {
+          const entry = {
             address,
             status: state.status,
             balance: state.balance,
             height,
           };
+          const projectedAssets = projectAssets(state.assets || {}, assetsFilter);
+          if (projectedAssets !== null) entry.assets = projectedAssets;
+          return entry;
         } catch (e) {
           return {
             address,
@@ -257,13 +354,16 @@ const handlers = {
     }
     const address = params.address;
 
-    // Asset filter — MVP is native-only. Fase 5 will lift this.
-    if (params.asset != null && params.asset !== false) {
-      throw new MethodError(
-        ERROR_CODES.INVALID_PARAMS,
-        "asset filter not supported yet (use null/false for native)",
-      );
-    }
+    // Asset filter: accepts the same shapes as address.subscribe.
+    //   undefined/null/false → native only (default)
+    //   true → all assets the address has
+    //   string[] → only these asset names
+    // Note: history (deltas) currently stays native-only because Neurai's
+    // getaddressdeltas with `assetName: "*"` returns empty. Per-asset
+    // history queries are a follow-up. `asset` is kept as a legacy alias.
+    const assetsFilter = parseAssetsFilter(
+      params.assets !== undefined ? params.assets : params.asset,
+    );
 
     const val = await callRPC("validateaddress", [address]).catch(() => null);
     if (!val || val.isvalid !== true) {
@@ -456,7 +556,18 @@ const handlers = {
       }
     }
 
-    return {
+    const projectedAssets = projectAssets(state.assets || {}, assetsFilter);
+    const projectedAssetUtxos = includeUtxos
+      ? projectAssetUtxos(state.assetUtxos || [], assetsFilter).map((u) => ({
+          txid: u.txid,
+          vout: u.outputIndex,
+          satoshis: u.satoshis,
+          height: u.height,
+          asset: u.assetName || "",
+        }))
+      : [];
+
+    const response = {
       address,
       status: state.status,
       balance: state.balance,
@@ -466,6 +577,11 @@ const handlers = {
       page: pageInfo,
       utxo_page: utxoPage,
     };
+    if (projectedAssets !== null) {
+      response.assets = projectedAssets;
+      response.asset_utxos = projectedAssetUtxos;
+    }
+    return response;
   },
 
   "tx.broadcast": async (session, params) => {

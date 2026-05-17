@@ -8,6 +8,8 @@ const TOKEN =
   process.env.PROXY_TOKEN ||
   "testnet-wss-push-token-do-not-use-in-production";
 const TEST_ADDRESS = process.env.TEST_ADDRESS || null;
+const TEST_ASSET_ADDRESS = process.env.TEST_ASSET_ADDRESS || null;
+const TEST_ASSET_NAME = process.env.TEST_ASSET_NAME || null;
 const BURST_SIZE = Number(process.env.BURST_SIZE || 80);
 const BURST_LIMIT = Number(process.env.BURST_LIMIT || 50);
 
@@ -506,6 +508,117 @@ async function testDepinUnknownMethod() {
   });
 }
 
+async function testSubscribeAssetsValidation() {
+  await withSession(async (ws) => {
+    const r = await rpc(ws, {
+      id: 940,
+      method: "address.subscribe",
+      params: { address: TEST_ADDRESS || "tnq1pdummy", assets: 123 },
+    });
+    if (r.error && r.error.code === 1003)
+      ok("address.subscribe rejects invalid `assets` type (1003)");
+    else fail("subscribe assets validation", JSON.stringify(r));
+  });
+}
+
+async function testSubscribeAssetsTrue() {
+  if (!TEST_ASSET_ADDRESS) {
+    console.log("  -- TEST_ASSET_ADDRESS not set, skipping assets=true subscribe test");
+    return;
+  }
+  await withSession(async (ws) => {
+    const r = await rpc(ws, {
+      id: 941,
+      method: "address.subscribe",
+      params: { address: TEST_ASSET_ADDRESS, assets: true },
+    });
+    if (!r.result) return fail("subscribe assets=true: result", JSON.stringify(r));
+    if (!r.result.assets || typeof r.result.assets !== "object")
+      return fail("subscribe assets=true: missing assets", JSON.stringify(r.result));
+    const names = Object.keys(r.result.assets);
+    ok(
+      `address.subscribe(assets=true) returned ${names.length} asset(s): ${names.slice(0, 4).join(",")}${names.length > 4 ? "..." : ""}`,
+    );
+  });
+}
+
+async function testSubscribeAssetsList() {
+  if (!TEST_ASSET_ADDRESS || !TEST_ASSET_NAME) {
+    console.log("  -- TEST_ASSET_NAME not set, skipping assets=[name] subscribe test");
+    return;
+  }
+  await withSession(async (ws) => {
+    const r = await rpc(ws, {
+      id: 942,
+      method: "address.subscribe",
+      params: { address: TEST_ASSET_ADDRESS, assets: [TEST_ASSET_NAME] },
+    });
+    if (!r.result || !r.result.assets)
+      return fail("subscribe assets=[name]: missing", JSON.stringify(r));
+    if (!r.result.assets[TEST_ASSET_NAME])
+      return fail("subscribe assets=[name]: filter ignored", JSON.stringify(r.result.assets));
+    const onlyName = Object.keys(r.result.assets);
+    if (onlyName.length !== 1)
+      return fail("subscribe assets=[name]: extra keys", JSON.stringify(onlyName));
+    const bal = r.result.assets[TEST_ASSET_NAME];
+    ok(
+      `address.subscribe(assets=[${TEST_ASSET_NAME}]) → confirmed=${bal.confirmed}`,
+    );
+  });
+}
+
+async function testGetStateAssetsTrue() {
+  if (!TEST_ASSET_ADDRESS) return;
+  await withSession(async (ws) => {
+    const r = await rpc(ws, {
+      id: 943,
+      method: "address.get_state",
+      params: {
+        address: TEST_ASSET_ADDRESS,
+        include_history: false,
+        include_utxos: true,
+        assets: true,
+      },
+    });
+    if (!r.result) return fail("get_state assets=true: result", JSON.stringify(r));
+    if (!r.result.assets || typeof r.result.assets !== "object")
+      return fail("get_state assets=true: assets missing", JSON.stringify(r.result));
+    if (!Array.isArray(r.result.asset_utxos))
+      return fail("get_state assets=true: asset_utxos not array", JSON.stringify(r.result));
+    const assetNames = Object.keys(r.result.assets);
+    ok(
+      `address.get_state(assets=true) assets=${assetNames.length} asset_utxos=${r.result.asset_utxos.length}`,
+    );
+  });
+}
+
+async function testGetStateAssetsList() {
+  if (!TEST_ASSET_ADDRESS || !TEST_ASSET_NAME) return;
+  await withSession(async (ws) => {
+    const r = await rpc(ws, {
+      id: 944,
+      method: "address.get_state",
+      params: {
+        address: TEST_ASSET_ADDRESS,
+        include_history: false,
+        include_utxos: true,
+        assets: [TEST_ASSET_NAME],
+      },
+    });
+    if (!r.result || !r.result.assets)
+      return fail("get_state assets=[name]: missing", JSON.stringify(r));
+    const otherAssets = r.result.asset_utxos.filter((u) => u.asset !== TEST_ASSET_NAME);
+    if (otherAssets.length > 0)
+      return fail(
+        "get_state assets filter leaked other assets",
+        `${otherAssets.length} stray entries`,
+      );
+    ok(
+      `address.get_state(assets=[${TEST_ASSET_NAME}]) asset_utxos=${r.result.asset_utxos.length} (filtered)`,
+    );
+  });
+}
+
 async function testBulkSubscribeMixed() {
   await withSession(async (ws) => {
     const valid = TEST_ADDRESS || null;
@@ -687,6 +800,11 @@ async function testBurst() {
   await testDepinUnknownMethod();
   await testValidAddressSubscribe();
   await testGetStateValid();
+  await testSubscribeAssetsValidation();
+  await testSubscribeAssetsTrue();
+  await testSubscribeAssetsList();
+  await testGetStateAssetsTrue();
+  await testGetStateAssetsList();
   await testGetStateUtxoLimit();
   await testGetStateUtxoCursor();
   await testGetStateUtxoLimitAll();

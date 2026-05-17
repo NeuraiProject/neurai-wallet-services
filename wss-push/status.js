@@ -31,11 +31,33 @@ function statusString(state) {
     .map((u) => `${u.txid}:${u.vout}:${u.value}:${u.asset || ""}`)
     .join(",");
 
+  // Assets section: always present (empty when address has no asset activity).
+  // The status thus catches any asset balance/UTXO change too, not just native.
+  // Format: assets:NAME=confirmed,unconfirmed;NAME2=confirmed,unconfirmed|asset_utxos:NAME:txid:vout:satoshis,...
+  const assets = state && state.assets ? state.assets : {};
+  const assetNames = Object.keys(assets).sort();
+  const assetsStr = assetNames
+    .map((n) => {
+      const a = assets[n] || {};
+      const c = a.confirmed == null ? 0 : a.confirmed;
+      const u = a.unconfirmed == null ? 0 : a.unconfirmed;
+      return `${n}=${c},${u}`;
+    })
+    .join(";");
+
+  const assetUtxos = Array.isArray(state && state.assetUtxos) ? state.assetUtxos.slice() : [];
+  assetUtxos.sort(compareUtxo);
+  const assetUtxosStr = assetUtxos
+    .map((u) => `${u.asset || ""}:${u.txid}:${u.vout}:${u.value}`)
+    .join(",");
+
   return (
     `balance.confirmed:${confirmed}` +
     `|balance.unconfirmed:${unconfirmed}` +
     `|mempool:${mempoolStr}` +
-    `|utxos:${utxosStr}`
+    `|utxos:${utxosStr}` +
+    `|assets:${assetsStr}` +
+    `|asset_utxos:${assetUtxosStr}`
   );
 }
 

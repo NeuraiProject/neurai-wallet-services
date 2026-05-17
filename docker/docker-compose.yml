@@ -162,6 +162,9 @@ services:
       PROXY_TOKEN: "testnet-wss-push-token-do-not-use-in-production"
       # Set TEST_ADDRESS to a valid Neurai testnet address to also exercise the happy-path subscribe.
       # TEST_ADDRESS: ""
+      # Set these to exercise the asset code paths against a real address holding assets.
+      # TEST_ASSET_ADDRESS: ""
+      # TEST_ASSET_NAME: ""
       BURST_SIZE: "80"
       BURST_LIMIT: "50"
     depends_on:

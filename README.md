@@ -27,22 +27,26 @@ that speaks the same protocol.
 
 ## Status
 
-**Phases 1, 2, 3, 4 + 6 implemented and verified against a live testnet node**:
+**Phases 1, 2, 3, 4, 5 + 6 implemented and verified against a live testnet node**:
 
 - `hello`, `ping`
-- `address.subscribe`, `address.unsubscribe` (with initial state)
+- `address.subscribe`, `address.unsubscribe`, `address.subscribe.bulk`,
+  `address.unsubscribe.bulk` (with optional `assets` filter)
 - `address.get_state` with composite cursor pagination (history + UTXOs)
+  and assets projection
 - `tx.broadcast`
 - `depin.*` — read-only and signed methods (with challenge cache)
-- Push events: `chain.tip`, `chain.reorg`, `address.changed`,
-  `node.synced`, `node.syncing`
+- Push events: `chain.tip`, `chain.reorg`, `address.changed` (with
+  `touched_assets` in delta), `node.synced`, `node.syncing`
 - ZMQ subscriber (`zeromq` optional dep) + mempool polling fallback
 - Sync gating: methods that need a synced chain return `1008` with progress
 - WS-level ping/pong keepalive (configurable, default 25s interval / 10s timeout)
 - Auth, rate limit, session limits, cert hot-reload, block-index warmup
 
-Pending: Fase 5 — assets (`assets: true | string[]` filter on subscribe +
-get_state). Optional improvements: per-block "candidate addresses" refresh.
+Pending: per-asset history pagination via deltas (Neurai's
+`getaddressdeltas` with `assetName: "*"` returns empty; needs per-asset
+calls). Other optional improvements: per-block "candidate addresses"
+refresh.
 
 ## Protocol overview
 
@@ -81,11 +85,11 @@ Application-level version (reported in `hello`): `wss-push/1`.
 |---|---|---|---|
 | `hello` | `{client, version, network, protocol}` | server info + tip + sync state | no |
 | `ping` | none | `"pong"` | no |
-| `address.subscribe` | `{address}` | `{address, status, balance, height}` | **yes** |
-| `address.subscribe.bulk` | `{addresses: [...]}` | `{results: [{address, status?, balance?, height?, error?}]}` | **yes** |
+| `address.subscribe` | `{address, assets?}` | `{address, status, balance, height, assets?}` | **yes** |
+| `address.subscribe.bulk` | `{addresses: [...], assets?}` | `{results: [{address, status?, balance?, height?, assets?, error?}]}` | **yes** |
 | `address.unsubscribe` | `{address}` | `true` | no |
 | `address.unsubscribe.bulk` | `{addresses: [...]}` | `{count}` | no |
-| `address.get_state` | `{address, include_history?, include_utxos?, cursor?, limit?, utxo_cursor?, utxo_limit?, asset?, from_height?}` | `{address, status, balance, mempool, history, utxos, page, utxo_page}` | **yes** |
+| `address.get_state` | `{address, include_history?, include_utxos?, cursor?, limit?, utxo_cursor?, utxo_limit?, assets?, from_height?}` | `{address, status, balance, mempool, history, utxos, page, utxo_page, assets?, asset_utxos?}` | **yes** |
 | `tx.broadcast` | `{rawtx}` | `{txid}` | **yes** |
 | `depin.check_validity` | `[asset]` or `{args:[asset]}` | RPC result | **yes** |
 | `depin.list_holders` | `[asset]` | RPC result | **yes** |
@@ -160,8 +164,50 @@ multi-MB responses. The wallet has two ways to get more:
 The server-side cap is `wss_push.utxo_page_limit` (default 1000); requests
 above this clamp silently to the cap unless `utxo_limit: 0`.
 
-The `asset` field is reserved for Fase 5 and currently must be `null` or
-`false` (native XNA only).
+### Assets
+
+Neurai supports tokens (assets) on the same chain. By default the proxy
+returns only the native XNA balance and UTXOs — wallets that don't care
+about tokens see nothing new. To opt in, pass an `assets` filter:
+
+| `assets` value | Behavior |
+|---|---|
+| `false`, `null`, or omitted | Native XNA only (default). Response unchanged. |
+| `true` | Include every asset the address holds. |
+| `["TRON", "BROM"]` | Include only these specific asset names (zero-filled if absent). |
+
+When `assets` is set, the response gains:
+
+```jsonc
+// address.subscribe / address.subscribe.bulk[i]
+{ "address": "...", "status": "...", "balance": {...}, "height": 75900,
+  "assets": {
+    "TRON":  { "confirmed": 100700000000, "unconfirmed": 0 },
+    "TRON!": { "confirmed": 100000000,    "unconfirmed": 0 }
+  } }
+
+// address.get_state additionally returns:
+{ "...": "...",
+  "assets": { "TRON": {...}, ... },
+  "asset_utxos": [
+    { "txid": "...", "vout": 1, "satoshis": 42000000000, "height": 13973, "asset": "TRON" }
+  ] }
+```
+
+Key points:
+
+- The **status hash always includes asset balances + asset UTXOs** regardless
+  of the filter. This means a token transfer to a subscribed address fires
+  `address.changed` even if the wallet only requested `assets: false`. The
+  wallet decides whether to refetch with the assets filter based on
+  `delta.touched_assets` in the event.
+- **Ownership tokens** (`NAME!`) are returned as separate entries from the
+  underlying asset (`NAME`) — they're distinct on Neurai. The wallet can
+  show or hide them as needed.
+- **Asset history** is currently native-only in `address.get_state`. Neurai's
+  `getaddressdeltas` with `assetName: "*"` returns empty, so per-asset
+  history requires explicit per-asset queries (a follow-up improvement).
+  Asset balances and UTXOs work fine.
 
 ### Bulk subscribe for HD wallets
 

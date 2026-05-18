@@ -1,7 +1,7 @@
 services:
   wss-test:
     # Acceptance test client. This compose file is intended to be layered after
-    # docker/docker-compose.yml so it can reuse the service network.
+    # docker/testnet/docker-compose.yml so it can reuse the service network.
     build:
       context: ../tests/wss-test
       dockerfile: Dockerfile
@@ -25,4 +25,4 @@ services:
     depends_on:
       - rpc-proxy
     networks:
-      - neurai_net
+      - neurai_net_testnet

@@ -1,9 +1,9 @@
-name: neurai-wallet-services
+name: neurai-wallet-services-testnet
 
 services:
   neuraid:
     build:
-      context: ./node
+      context: ../node
       dockerfile: Dockerfile
       args:
         BRANCH: DePIN-Test
@@ -53,10 +53,10 @@ services:
       NEURAI_DATADIR: "/data"
 
     volumes:
-      - neurai_data:/data
+      - neurai_data_testnet:/data
 
     # Internal-only  the node is not reachable from the host. The rpc-proxy
-    # container talks to neuraid:19101 over the neurai_net bridge. Use
+    # container talks to neuraid:19101 over the neurai_net_testnet bridge. Use
     # `docker compose exec neuraid neurai-cli ...` for CLI access.
     expose:
       - "19100"          # testnet P2P (only relevant if NEURAI_LISTEN=1)
@@ -64,7 +64,7 @@ services:
       - "28332"          # ZMQ — consumed by rpc-proxy
 
     networks:
-      - neurai_net
+      - neurai_net_testnet
 
     healthcheck:
       test: ["CMD", "neurai-cli", "-datadir=/data", "getblockchaininfo"]
@@ -76,8 +76,8 @@ services:
   rpc-proxy:
     build:
       # Use repo root as context so we can COPY the local working tree.
-      # For published image, swap to context: ./rpc-proxy + dockerfile: Dockerfile.
-      context: ..
+      # For published image, swap to context: ../rpc-proxy + dockerfile: Dockerfile.
+      context: ../..
       dockerfile: docker/rpc-proxy/Dockerfile.local
     restart: unless-stopped
 
@@ -143,16 +143,16 @@ services:
       - "127.0.0.1:19020:19020"
 
     networks:
-      - neurai_net
+      - neurai_net_testnet
 
     depends_on:
       neuraid:
         condition: service_healthy
 
 volumes:
-  neurai_data:
+  neurai_data_testnet:
     driver: local
 
 networks:
-  neurai_net:
+  neurai_net_testnet:
     driver: bridge

@@ -1,0 +1,161 @@
+name: neurai-wallet-services-mainnet
+
+services:
+  neuraid:
+    build:
+      context: ../node
+      dockerfile: Dockerfile
+      args:
+        BRANCH: DePIN-Test
+    restart: unless-stopped
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+    environment:
+      # ── Network ──────────────────────────────────────────────────────────
+      NEURAI_TESTNET: "0"
+      # NEURAI_LISTEN: 1 to accept inbound P2P connections
+      NEURAI_LISTEN: "0"
+      NEURAI_REST: "1"
+
+      # ── RPC ──────────────────────────────────────────────────────────────
+      NEURAI_RPC_USER: "neurai"
+      NEURAI_RPC_PASSWORD: "changeme"
+      # NEURAI_RPC_ALLOW_IP: restrict in production (e.g. 127.0.0.1/32)
+      NEURAI_RPC_ALLOW_IP: "0.0.0.0/0"
+      NEURAI_RPC_PORT: "19001"
+      NEURAI_RPC_TIMEOUT: "240"
+      NEURAI_RPC_WORKQUEUE: "64"
+      NEURAI_RPC_THREADS: "8"
+
+      # ── Wallet ───────────────────────────────────────────────────────────
+      # NEURAI_DISABLE_WALLET: 1=disabled | 0=enabled
+      NEURAI_DISABLE_WALLET: "1"
+
+      # ── Indexes ──────────────────────────────────────────────────────────
+      NEURAI_TXINDEX: "1"
+      NEURAI_ASSETINDEX: "1"
+      NEURAI_ADDRESSINDEX: "1"
+      NEURAI_TIMESTAMPINDEX: "1"
+      NEURAI_SPENTINDEX: "1"
+      NEURAI_PUBKEYINDEX: "1"
+
+      # -- ZMQ ----------------------------------------------------------------
+      # Internal Docker endpoint used by rpc-proxy as tcp://neuraid:28332
+      NEURAI_ZMQ_ENABLED: "1"
+      NEURAI_ZMQ_BIND: "tcp://0.0.0.0:28332"
+
+      # ── Data ─────────────────────────────────────────────────────────────
+      NEURAI_DATADIR: "/data"
+
+    volumes:
+      - neurai_data_mainnet:/data
+
+    # Internal-only  the node is not reachable from the host. The rpc-proxy
+    # container talks to neuraid:19001 over the neurai_net_mainnet bridge. Use
+    # `docker compose exec neuraid neurai-cli ...` for CLI access.
+    expose:
+      - "19000"          # mainnet P2P (only relevant if NEURAI_LISTEN=1)
+      - "19001"          # mainnet RPC — consumed by rpc-proxy
+      - "28332"          # ZMQ — consumed by rpc-proxy
+
+    networks:
+      - neurai_net_mainnet
+
+    healthcheck:
+      test: ["CMD", "neurai-cli", "-datadir=/data", "getblockchaininfo"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  rpc-proxy:
+    build:
+      # Use repo root as context so we can COPY the local working tree.
+      # For published image, swap to context: ../rpc-proxy + dockerfile: Dockerfile.
+      context: ../..
+      dockerfile: docker/rpc-proxy/Dockerfile.local
+    restart: unless-stopped
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+    environment:
+      NEURAI_NODE_NAME: "neuraid-mainnet"
+      NEURAI_NODE_URL: "http://neuraid:19001"
+      NEURAI_RPC_USER: "neurai"
+      NEURAI_RPC_PASSWORD: "changeme"
+      # Enable to expose DePIN methods (depin.*) on WSS. Requires the Neurai node
+      # to be running with DePIN messaging service on depin_url.
+      NEURAI_DEPIN_ENABLED: "false"
+      PROXY_WSS_ENABLED: "true"
+      PROXY_WSS_PORT: "19020"
+      PROXY_WSS_PATH: "/push"
+      PROXY_WSS_AUTH_TRANSPORT: "sec-websocket-protocol"
+      # CHANGE-ME before any internet-facing deployment. Mainnet must never run
+      # with a default or shared token — generate a long random secret per host.
+      PROXY_WSS_AUTH_TOKEN: "CHANGE-ME-mainnet-wss-token"
+      # Default deployment: behind a host reverse proxy that terminates TLS
+      # (HestiaCP / nginx / Caddy / etc). The proxy listens on plain ws://
+      # internally and the reverse proxy on the host adds TLS + LE renewal.
+      #
+      # In HestiaCP: add the (sub)domain, enable Let's Encrypt in the UI, and
+      # drop this nginx snippet at
+      #   /home/<user>/conf/web/<domain>/nginx.ssl.conf_wss
+      # then run `v-restart-web`:
+      #
+      #   location /push {
+      #       proxy_pass http://127.0.0.1:19010/push;
+      #       proxy_http_version 1.1;
+      #       proxy_set_header Upgrade $http_upgrade;
+      #       proxy_set_header Connection "upgrade";
+      #       proxy_set_header Host $host;
+      #       proxy_set_header X-Forwarded-For $remote_addr;
+      #       proxy_read_timeout 3600s;
+      #   }
+      #
+      # To run the proxy with its own TLS (self-signed dev cert or LE files
+      # mounted from the host), set PROXY_WSS_TLS_ENABLED=true.
+      # PROXY_WSS_AUTOGEN_CERT=true generates a self-signed cert for dev.
+      PROXY_WSS_TLS_ENABLED: "false"
+      PROXY_WSS_AUTOGEN_CERT: "false"
+      PROXY_WSS_ZMQ_SEQUENCE_ENABLED: "false"
+      # Optional local stats endpoint for ops/monitoring. When enabled, exposes
+      # GET http://127.0.0.1:<port>/stats with sessions/subs/tip/zmq/queue.
+      # Always loopback-only (unauthenticated); never publish the port.
+      PROXY_WSS_STATS_ENABLED: "false"
+      PROXY_WSS_STATS_PORT: "19021"
+      PROXY_ZMQ_ENDPOINT: "tcp://neuraid:28332"
+
+    expose:
+      - "19020"
+
+    ports:
+      # WSS push bound to localhost only. Mainnet uses 19010 on the host so it
+      # can coexist with the testnet stack (which uses 19020). The host reverse
+      # proxy (HestiaCP nginx) reaches it via 127.0.0.1:19010. Never publish
+      # 19010 to the internet directly while TLS_ENABLED=false — anyone could
+      # forge X-Forwarded-For.
+      - "127.0.0.1:19010:19020"
+
+    networks:
+      - neurai_net_mainnet
+
+    depends_on:
+      neuraid:
+        condition: service_healthy
+
+volumes:
+  neurai_data_mainnet:
+    driver: local
+
+networks:
+  neurai_net_mainnet:
+    driver: bridge

@@ -394,32 +394,39 @@ reachable from the public network. To consume it from the host, exec into
 the container or add a localhost port mapping in your compose file.
 
 ```text
-$ docker compose -f docker/docker-compose.yml exec rpc-proxy wget -qO- http://127.0.0.1:19021/stats
+$ docker compose -f docker/testnet/docker-compose.yml exec rpc-proxy wget -qO- http://127.0.0.1:19021/stats
 {"uptime_s":1234,"sessions":{"sessionCount":3},"subscriptions":{"distinctAddresses":7,...},
  "chain":{"tip":{"height":76820,...},...},"node":{"syncing":false,...},"zmq":{...}}
 ```
 
 Only `GET /stats` is served; other paths return 404 and non-GET returns 405.
 
-## Running locally (docker, testnet)
+## Running locally (docker)
 
-The docker stack runs a Neurai testnet node and the wss server. Test-only
-assets live under `tests/`.
+The docker stack runs a Neurai node and the wss server. There are two
+self-contained compose files, one per network — they use distinct project
+names, volumes and Docker networks so they can run side-by-side on the
+same host. Test-only assets live under `tests/`.
 
 ```bash
-# Build and start
-docker compose -f docker/docker-compose.yml up -d --build
+# Testnet (build and start)
+docker compose -f docker/testnet/docker-compose.yml up -d --build
 
-# Run the Phase 1 + 2 acceptance suite
-docker compose -f docker/docker-compose.yml -f tests/docker-compose.yml --profile test run --rm wss-test
+# Mainnet (build and start)
+docker compose -f docker/mainnet/docker-compose.yml up -d --build
+
+# Run the Phase 1 + 2 acceptance suite (testnet only)
+docker compose -f docker/testnet/docker-compose.yml -f tests/docker-compose.yml --profile test run --rm wss-test
 ```
 
 Defaults:
 
-- WSS push listens on `127.0.0.1:19020/push` in plain WS mode (TLS off).
-  A host reverse proxy is expected to terminate TLS.
-- Auth token: `testnet-wss-token-do-not-use-in-production` —
-  override via `PROXY_WSS_AUTH_TOKEN`.
+- Testnet WSS push listens on `127.0.0.1:19020/push`, mainnet on
+  `127.0.0.1:19010/push`, both plain WS (TLS off). A host reverse proxy
+  is expected to terminate TLS.
+- Testnet auth token: `testnet-wss-token-do-not-use-in-production`.
+  Mainnet ships with a `CHANGE-ME-mainnet-wss-token` placeholder —
+  override via `PROXY_WSS_AUTH_TOKEN` before any internet-facing run.
 - DePIN methods are present but `NEURAI_DEPIN_ENABLED=false` by default;
   set to `true` (and ensure the node runs the DePIN service on
   `NEURAI_DEPIN_URL`) to make `depin.*` actually reach a backend.
@@ -458,7 +465,10 @@ v-restart-web
 **4. Start the docker stack:**
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d
+# Testnet
+docker compose -f docker/testnet/docker-compose.yml up -d
+# or mainnet (port 19010 on the host instead of 19020)
+docker compose -f docker/mainnet/docker-compose.yml up -d
 ```
 
 The wallet then connects to `wss://<your-domain>/push`. HestiaCP handles
@@ -514,9 +524,12 @@ self-signed cert in-container at startup.
 │   ├── poller.js             # bestblockhash + mempool polling fallback
 │   └── prevout-cache.js      # bounded outpoint → address LRU for input resolution
 ├── docker/
-│   ├── docker-compose.yml    # testnet node + proxy
-│   ├── rpc-proxy/            # proxy image (local build)
-│   └── node/                 # Neurai testnet node image
+│   ├── testnet/
+│   │   └── docker-compose.yml    # testnet node + proxy stack
+│   ├── mainnet/
+│   │   └── docker-compose.yml    # mainnet node + proxy stack
+│   ├── rpc-proxy/                # proxy image (shared)
+│   └── node/                     # Neurai node image (shared)
 └── tests/
     ├── docker-compose.yml    # E2E test compose overlay
     ├── unit/                  # Jest unit tests
@@ -528,7 +541,7 @@ self-signed cert in-container at startup.
 ```bash
 npm install
 npm test                                                          # unit tests
-docker compose -f docker/docker-compose.yml -f tests/docker-compose.yml --profile test run --rm wss-test   # E2E
+docker compose -f docker/testnet/docker-compose.yml -f tests/docker-compose.yml --profile test run --rm wss-test   # E2E
 ```
 
 ## License

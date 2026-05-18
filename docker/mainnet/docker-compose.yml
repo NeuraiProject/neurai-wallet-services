@@ -55,14 +55,10 @@ services:
     volumes:
       - neurai_data_mainnet:/data
 
-    # Internal-only  the node is not reachable from the host. The rpc-proxy
-    # container talks to neuraid:19001 over the neurai_net_mainnet bridge. Use
-    # `docker compose exec neuraid neurai-cli ...` for CLI access.
-    expose:
-      - "19000"          # mainnet P2P (only relevant if NEURAI_LISTEN=1)
-      - "19001"          # mainnet RPC — consumed by rpc-proxy
-      - "28332"          # ZMQ — consumed by rpc-proxy
-
+    # Internal-only — the node is not reachable from the host. The rpc-proxy
+    # container talks to neuraid:19001 (RPC) and neuraid:28332 (ZMQ) over the
+    # neurai_net_mainnet bridge. Use `docker compose exec neuraid neurai-cli ...`
+    # for CLI access.
     networks:
       - neurai_net_mainnet
 
@@ -133,9 +129,6 @@ services:
       PROXY_WSS_STATS_ENABLED: "false"
       PROXY_WSS_STATS_PORT: "19021"
       PROXY_ZMQ_ENDPOINT: "tcp://neuraid:28332"
-
-    expose:
-      - "19020"
 
     ports:
       # WSS push bound to localhost only. Mainnet uses 19010 on the host so it

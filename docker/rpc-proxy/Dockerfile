@@ -1,25 +1,23 @@
 # ── Neurai RPC Proxy ───────────────────────────────────────────────────────
+# Builds the proxy image from the local working tree.
+# Build context MUST be the repository root, not docker/rpc-proxy/.
 FROM node:lts-slim
-
-ARG REPO_URL=https://github.com/NeuraiProject/neurai-rpc-proxy.git
-ARG REPO_REF=master
 
 ENV NODE_ENV=production
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
     ca-certificates \
     openssl \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-RUN git clone --depth 1 --branch "${REPO_REF}" "${REPO_URL}" /tmp/src \
- && cp -a /tmp/src/. /app/ \
- && rm -rf /tmp/src \
- && (npm ci --omit=dev || npm install --omit=dev)
+COPY package*.json ./
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
 
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY . ./
+
+COPY docker/rpc-proxy/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 19999 19020

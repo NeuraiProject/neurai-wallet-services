@@ -76,9 +76,8 @@ services:
   rpc-proxy:
     build:
       # Use repo root as context so we can COPY the local working tree.
-      # For published image, swap to context: ../rpc-proxy + dockerfile: Dockerfile.
       context: ../..
-      dockerfile: docker/rpc-proxy/Dockerfile.local
+      dockerfile: docker/rpc-proxy/Dockerfile
     restart: unless-stopped
 
     logging:

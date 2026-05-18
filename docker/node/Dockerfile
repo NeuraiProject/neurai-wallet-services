@@ -49,7 +49,10 @@ RUN git clone --branch ${BRANCH} --single-branch \
 
 WORKDIR /root/Neurai/depends
 
-RUN make HOST=x86_64-pc-linux-gnu -j$(nproc)
+# NO_QT=1 — skip building Qt and its transitive deps in depends/. Saves
+# ~30-50 min off the build. ZMQ is still built by depends/ as usual and
+# linked statically into neuraid.
+RUN make HOST=x86_64-pc-linux-gnu NO_QT=1 -j$(nproc)
 
 WORKDIR /root/Neurai
 

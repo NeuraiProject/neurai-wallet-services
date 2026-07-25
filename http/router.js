@@ -2,6 +2,9 @@ const staticFiles = require("./static");
 
 const JSON_LIMIT = 2 * 1024 * 1024;
 
+const POST_ROUTES = { "/rpc": "handleRpc", "/depin": "handleDePin", "/depin/challenge": "handleDePinChallenge" };
+const API_PATHS = ["/whitelist", "/getCache", "/settings", ...Object.keys(POST_ROUTES)];
+
 function sendJson(res, status, body, headers = {}) {
   if (res.writableEnded || res.destroyed) return;
   const text = JSON.stringify(body);
@@ -36,18 +39,19 @@ function createHandler(deps) {
     if (req.method === "OPTIONS") {
       res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, HEAD, POST, OPTIONS", "access-control-allow-headers": "content-type" }); res.end(); return;
     }
-    if (["/whitelist", "/getCache", "/settings", "/rpc", "/depin"].includes(pathname) && !deps.tryAccept(req)) {
+    if (API_PATHS.includes(pathname) && !deps.tryAccept(req)) {
       return sendJson(res, 429, { error: "rate limit exceeded" }, { "retry-after": "1" });
     }
     if (req.method === "GET" && pathname === "/whitelist") return sendJson(res, 200, deps.whitelist);
     if (req.method === "GET" && pathname === "/getCache") return sendJson(res, 200, deps.getCache());
     if (req.method === "GET" && pathname === "/settings") return sendJson(res, 200, deps.settings);
     if (req.method === "GET" && pathname === "/rpc") return sendJson(res, 405, { description: "Please use the HTTP POST method to proceed. For more details, refer to our documentation." }, { allow: "POST" });
-    if (req.method === "POST" && (pathname === "/rpc" || pathname === "/depin")) {
+    const postRoute = req.method === "POST" ? POST_ROUTES[pathname] : undefined;
+    if (postRoute) {
       try {
         const body = await readJsonBody(req);
         if (req.aborted || res.destroyed) return;
-        return pathname === "/rpc" ? deps.handleRpc(body, req, res) : deps.handleDePin(body, req, res);
+        return deps[postRoute](body, req, res);
       } catch (e) { return sendJson(res, e.status || 400, { error: e.status === 413 ? "request body too large" : "invalid JSON body" }); }
     }
     if ((req.method === "GET" || req.method === "HEAD") && deps.serveWww && staticFiles.serve(req, res, pathname)) return;

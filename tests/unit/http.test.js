@@ -59,6 +59,36 @@ test("RPC errors have the documented compatibility format", async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
+test("POST /depin/challenge issues the challenge the client has to sign", async () => {
+  const expiresAt = 1750000000000;
+  const service = create({ enabled: true }, null, {
+    nodeDeps, rpc: async () => 1,
+    depinService: { ...depinService, requestChallenge: async (url, address) => ({ challenge: `c-${address}`, timeout: 60, expiresAt }) },
+  });
+  const server = http.createServer(service.handleRequest);
+  await new Promise((resolve) => server.listen(0, resolve));
+  const issued = await request(server, "POST", "/depin/challenge", { address: "Nabc" });
+  expect(issued.status).toBe(200);
+  expect(issued.body).toEqual({ result: { challenge: "c-Nabc", timeout: 60, expires_at: new Date(expiresAt).toISOString() } });
+  const missing = await request(server, "POST", "/depin/challenge", {});
+  expect(missing.status).toBe(400);
+  expect(missing.body).toEqual({ error: "Missing or invalid address", description: "Request must include a valid 'address' field" });
+  await new Promise((resolve) => server.close(resolve));
+});
+
+test("POST /depin/challenge reports an unreachable DePIN node", async () => {
+  const service = create({ enabled: true }, null, {
+    nodeDeps, rpc: async () => 1,
+    depinService: { ...depinService, requestChallenge: async () => { throw new Error("Failed to request challenge: 502 Bad Gateway"); } },
+  });
+  const server = http.createServer(service.handleRequest);
+  await new Promise((resolve) => server.listen(0, resolve));
+  const failed = await request(server, "POST", "/depin/challenge", { address: "Nabc" });
+  expect(failed.status).toBe(500);
+  expect(failed.body).toEqual({ error: "Failed to request challenge: 502 Bad Gateway" });
+  await new Promise((resolve) => server.close(resolve));
+});
+
 test("per-IP rate limit must not exceed the global limit", () => {
   expect(() => create({ enabled: true, max_requests_per_second: 10, max_requests_per_second_per_ip: 11 }, null, {
     nodeDeps, depinService, rpc: async () => 1,

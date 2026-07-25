@@ -113,6 +113,20 @@ function create(rawCfg, globalConfig, injected = {}) {
     }
   }
 
+  // Mirrors the WSS `depin.challenge` method. Without it an HTTP client has no
+  // way to learn the challenge it is expected to sign, so POST /depin only
+  // worked when some other caller had already warmed the challenge cache.
+  async function handleDePinChallenge(body, req, res) {
+    const address = body && body.address;
+    if (!address || typeof address !== "string") return sendJson(res, 400, { error: "Missing or invalid address", description: "Request must include a valid 'address' field" });
+    const depinNode = nodeDeps.getDePinNode();
+    try {
+      const { challenge, timeout, expiresAt } = await depinService.requestChallenge(depinNode.depinUrl, address);
+      countRequest();
+      return sendJson(res, 200, { result: { challenge, timeout, expires_at: new Date(expiresAt).toISOString() } });
+    } catch (e) { return sendJson(res, 500, { error: e && e.message ? e.message : "challenge request failed" }); }
+  }
+
   async function handleDePin(body, req, res) {
     const { address, signature, method, params } = body || {};
     if (!address || typeof address !== "string") return sendJson(res, 400, { error: "Missing or invalid address", description: "Request must include a valid 'address' field" });
@@ -142,7 +156,7 @@ function create(rawCfg, globalConfig, injected = {}) {
     result.queueSize = queue.size; result.numberOfRequests = numberOfRequests.toLocaleString(); result.methods = cache.getMethods(); result.depinChallenges = depinService.getCacheStats(); result.nodes = nodeDeps.getNodes(); result.depinNodes = nodeDeps.getDePinNodes();
     return result;
   }
-  const handleRequest = createHandler({ whitelist, getCache, settings: { heading: cfg.heading, environment: cfg.environment, endpoint: cfg.endpoint }, serveWww: cfg.serve_www, tryAccept, handleRpc, handleDePin });
+  const handleRequest = createHandler({ whitelist, getCache, settings: { heading: cfg.heading, environment: cfg.environment, endpoint: cfg.endpoint }, serveWww: cfg.serve_www, tryAccept, handleRpc, handleDePin, handleDePinChallenge });
   return { handleRequest, getStats, onBlock(hash) { if (hash && hash !== lastBlockHash) { lastBlockHash = hash; cache.clear(); } } };
 }
 

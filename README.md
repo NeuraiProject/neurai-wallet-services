@@ -13,8 +13,9 @@ that speaks the same protocol.
 ## What's in here
 
 - A WSS endpoint at `/push` that speaks a JSON-RPC-like protocol over WebSocket.
-- Optional public HTTP RPC endpoints on the same listener: `POST /rpc`, `POST /depin`,
-  and `GET /settings`, `/whitelist`, `/getCache`. Enable them with `http.enabled`.
+- Optional public HTTP RPC endpoints on the same listener: `POST /rpc`,
+  `POST /depin`, `POST /depin/challenge`, and `GET /settings`, `/whitelist`,
+  `/getCache`. Enable them with `http.enabled`.
   Public HTTP calls are whitelisted, rate-limited and queued behind WSS RPC work.
 
 ### Optional public HTTP RPC
@@ -52,7 +53,8 @@ preserved. RPC execution errors are the exception: they are serialized as
 `{ "error": { "message", "code" } }` rather than Express's empty object for
 an `Error` instance. `signmessagewithprivkey` is deliberately not exposed;
 clients must sign locally. `sendrawtransaction` remains available for wallet
-broadcasting.
+broadcasting. `POST /depin/challenge` is an addition with no counterpart in the
+proxy, which left HTTP clients unable to obtain the challenge to sign.
 - Auth in the HTTP upgrade via `Sec-WebSocket-Protocol: wss, auth.<token>`.
 - Built-in rate limiting (`503 Retry-After`) and session/subscription caps.
 - ZMQ subscriber to the Neurai node (`hashblock` + `rawtx`) with polling
@@ -407,6 +409,18 @@ client → depin.send_msg({address, signature, args: [token, "auto", message, fr
 
 `"auto"` in the ip:port slot is auto-substituted with the configured DePIN
 node's host:port, matching the legacy `/depin` behavior.
+
+Over HTTP the same two steps are `POST /depin/challenge` and `POST /depin`:
+
+```sh
+curl -s -X POST $BASE/depin/challenge -H 'content-type: application/json' \
+  -d '{"address":"N…"}'
+# → {"result":{"challenge":"ab12cd…","timeout":60,"expires_at":"…Z"}}
+```
+
+Signing still happens on the client; the service never holds a private key. It
+relays the signature supplied in the request body and only reads the challenge
+from its per-`(depinUrl, address)` cache.
 
 ### Local stats endpoint (optional)
 

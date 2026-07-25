@@ -32,6 +32,20 @@ set -eu
 : "${PROXY_WSS_STATS_ENABLED:=false}"
 : "${PROXY_WSS_STATS_PORT:=19021}"
 : "${PROXY_ZMQ_ENDPOINT:=tcp://neuraid:28332}"
+: "${PROXY_HTTP_ENABLED:=false}"
+: "${PROXY_HTTP_SERVE_WWW:=true}"
+: "${PROXY_HTTP_HEADING:=Neurai RPC}"
+: "${PROXY_HTTP_ENVIRONMENT:=Neurai}"
+: "${PROXY_HTTP_ENDPOINT:=}"
+: "${PROXY_HTTP_CONCURRENCY:=4}"
+: "${PROXY_HTTP_MAX_RPS:=100}"
+: "${PROXY_HTTP_MAX_RPS_PER_IP:=20}"
+: "${PROXY_HTTP_MAX_QUEUE_SIZE:=500}"
+: "${PROXY_HTTP_RATE_LIMITER_TTL_MS:=300000}"
+: "${PROXY_HTTP_MAX_RATE_LIMITER_IPS:=10000}"
+: "${PROXY_HTTP_TRUSTED_PROXIES:=127.0.0.1,::1,::ffff:127.0.0.1}"
+
+PROXY_HTTP_TRUSTED_PROXY_IPS_JSON="$(node -e 'const values = (process.env.PROXY_HTTP_TRUSTED_PROXIES || "").split(",").map((value) => value.trim()).filter(Boolean); process.stdout.write(JSON.stringify(values));')"
 
 if [ "${PROXY_WSS_ENABLED}" = "true" ] \
    && [ "${PROXY_WSS_TLS_ENABLED}" = "true" ] \
@@ -79,6 +93,20 @@ cat > /app/config.json <<EOF
     "stats_enabled": ${PROXY_WSS_STATS_ENABLED},
     "stats_port": ${PROXY_WSS_STATS_PORT},
     "zmq_endpoint": "${PROXY_ZMQ_ENDPOINT}"
+  },
+  "http": {
+    "enabled": ${PROXY_HTTP_ENABLED},
+    "serve_www": ${PROXY_HTTP_SERVE_WWW},
+    "heading": "${PROXY_HTTP_HEADING}",
+    "environment": "${PROXY_HTTP_ENVIRONMENT}",
+    "endpoint": "${PROXY_HTTP_ENDPOINT}",
+    "concurrency": ${PROXY_HTTP_CONCURRENCY},
+    "max_requests_per_second": ${PROXY_HTTP_MAX_RPS},
+    "max_requests_per_second_per_ip": ${PROXY_HTTP_MAX_RPS_PER_IP},
+    "max_queue_size": ${PROXY_HTTP_MAX_QUEUE_SIZE},
+    "rate_limiter_ttl_ms": ${PROXY_HTTP_RATE_LIMITER_TTL_MS},
+    "max_rate_limiter_ips": ${PROXY_HTTP_MAX_RATE_LIMITER_IPS},
+    "trusted_proxy_ips": ${PROXY_HTTP_TRUSTED_PROXY_IPS_JSON}
   },
   "nodes": [
     {

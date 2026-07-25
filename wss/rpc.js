@@ -9,12 +9,15 @@ function initQueue(concurrency) {
   return pushQueue;
 }
 
-function callRPC(method, params) {
+// All node calls share this queue.  Callers may use a higher priority for
+// latency-sensitive work (the WSS event pipeline) so public HTTP traffic
+// cannot sit in front of block/address refreshes.
+function callRPC(method, params, priority = 0) {
   if (!pushQueue) initQueue(4);
   return pushQueue.add(async () => {
     const node = getRPCNode();
     return node.rpc(method, params == null ? [] : params);
-  });
+  }, { priority });
 }
 
 function getQueueStats() {

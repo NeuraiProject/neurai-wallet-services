@@ -69,6 +69,13 @@ services:
       # CHANGE-ME before any internet-facing deployment. Mainnet must never run
       # with a default or shared token — generate a long random secret per host.
       PROXY_WSS_AUTH_TOKEN: "CHANGE-ME-mainnet-wss-token"
+      PROXY_HTTP_ENABLED: "true"
+      PROXY_HTTP_ENVIRONMENT: "Neurai Mainnet"
+      PROXY_HTTP_ENDPOINT: "https://rpc-main.neurai.org/rpc"
+      PROXY_HTTP_MAX_RPS_PER_IP: "20"
+      # When using Hestia/nginx on the host, add this Compose network's bridge
+      # gateway (inspect it with `docker network inspect neurai_net_mainnet`).
+      # PROXY_HTTP_TRUSTED_PROXIES: "172.19.0.1,127.0.0.1,::1"
       # Default deployment: behind a host reverse proxy that terminates TLS
       # (HestiaCP / nginx / Caddy / etc). The proxy listens on plain ws://
       # internally and the reverse proxy on the host adds TLS + LE renewal.
@@ -86,6 +93,15 @@ services:
       #       proxy_set_header Host $host;
       #       proxy_set_header X-Forwarded-For $remote_addr;
       #       proxy_read_timeout 3600s;
+      #   }
+      #
+      #   # Public HTTP RPC (`/rpc`, `/depin`, UI and metadata). Do not set
+      #   # Upgrade/Connection here: these are ordinary HTTP requests.
+      #   location / {
+      #       proxy_pass http://127.0.0.1:19010;
+      #       proxy_set_header Host $host;
+      #       proxy_set_header X-Forwarded-For $remote_addr;
+      #       proxy_set_header X-Forwarded-Proto $scheme;
       #   }
       #
       # To run the proxy with its own TLS (self-signed dev cert or LE files

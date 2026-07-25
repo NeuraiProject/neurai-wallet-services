@@ -76,7 +76,9 @@ function fillDefaults(cfg) {
   };
 }
 
-function start(rawConfig, globalConfig) {
+let httpStats = null;
+
+function start(rawConfig, globalConfig, httpService) {
   if (!rawConfig || rawConfig.enabled !== true) {
     console.log("[WSS] disabled (wss.enabled !== true)");
     return null;
@@ -91,7 +93,8 @@ function start(rawConfig, globalConfig) {
   }
 
   const ctx = { config: cfg, globalConfig: globalConfig || null };
-  return server.start(cfg, ctx);
+  httpStats = httpService ? httpService.getStats : null;
+  return server.start(cfg, ctx, httpService);
 }
 
 function getStats() {
@@ -102,6 +105,7 @@ function getStats() {
     chain: chainState.getStats(),
     node: nodeHealth.getStatus(),
     zmq: zmqWatcher.getStatus(),
+    http: httpStats ? httpStats() : null,
   };
 }
 

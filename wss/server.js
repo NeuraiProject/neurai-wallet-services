@@ -161,7 +161,11 @@ function createRateLimiter(limit) {
   };
 }
 
-function start(config, ctx) {
+function attachHttpService(server, httpService) {
+  if (httpService) server.on("request", httpService.handleRequest);
+}
+
+function start(config, ctx, httpService) {
   let server;
   if (config.tls_enabled === false) {
     // Plain HTTP mode. Used when a reverse proxy (nginx/Caddy/etc.) terminates TLS upstream
@@ -199,6 +203,8 @@ function start(config, ctx) {
   });
 
   const tryAcceptConn = createRateLimiter(config.max_new_connections_per_second || 50);
+
+  attachHttpService(server, httpService);
 
   server.on("upgrade", (req, socket, head) => {
     if (pathOf(req) !== config.path) {
@@ -279,12 +285,12 @@ function start(config, ctx) {
     );
   });
 
-  startChainEvents(config);
+  startChainEvents(config, httpService);
 
   return { server, wss };
 }
 
-function startChainEvents(config) {
+function startChainEvents(config, httpService) {
   const cache = prevoutCache.create({ maxSize: 100000 });
   chainEvents.configure({
     methods,
@@ -295,6 +301,7 @@ function startChainEvents(config) {
 
   const handlersForWatchers = {
     onBlock: (hash) => {
+      if (httpService) httpService.onBlock(hash);
       chainEvents.onBlock(hash).catch((e) =>
         console.log("[chain-events] onBlock error:", e && e.message ? e.message : e),
       );
@@ -310,6 +317,7 @@ function startChainEvents(config) {
       );
     },
     onInitialTip: (hash) => {
+      if (httpService) httpService.onBlock(hash);
       chainEvents.onInitialTip(hash).catch(() => {});
     },
     onSequenceGap: (topic, prev, next) => {
@@ -349,4 +357,4 @@ function startChainEvents(config) {
   );
 }
 
-module.exports = { start };
+module.exports = { start, createRateLimiter, attachHttpService };

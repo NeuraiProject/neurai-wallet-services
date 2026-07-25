@@ -13,6 +13,46 @@ that speaks the same protocol.
 ## What's in here
 
 - A WSS endpoint at `/push` that speaks a JSON-RPC-like protocol over WebSocket.
+- Optional public HTTP RPC endpoints on the same listener: `POST /rpc`, `POST /depin`,
+  and `GET /settings`, `/whitelist`, `/getCache`. Enable them with `http.enabled`.
+  Public HTTP calls are whitelisted, rate-limited and queued behind WSS RPC work.
+
+### Optional public HTTP RPC
+
+HTTP shares the WSS port and TLS configuration; it cannot start independently.
+Leave it disabled unless the listener is intended to publish the RPC API.
+
+```json
+"http": {
+  "enabled": false,
+  "serve_www": true,
+  "concurrency": 4,
+  "max_requests_per_second": 100,
+  "max_requests_per_second_per_ip": 20,
+  "max_queue_size": 500
+}
+```
+
+`concurrency` limits HTTP work admitted to the shared node queue. WSS work has
+priority in that queue. `max_requests_per_second` is global;
+`max_requests_per_second_per_ip` is the individual-client budget.
+`max_queue_size` returns `503` when the HTTP backlog is full (waiting work
+only; executing work is not included). Per-IP buckets expire after five
+minutes of inactivity and are capped at 10,000 entries.
+
+`trusted_proxy_ips` determines which immediate peers may supply
+`X-Forwarded-For`; do not add untrusted IPs. For Docker behind Hestia/nginx on
+the host, the peer is normally the Docker bridge gateway, not `127.0.0.1`.
+Set `PROXY_HTTP_TRUSTED_PROXIES` to a comma-separated list including that
+gateway (find it with `docker network inspect <network-name>`), for example
+`172.19.0.1,127.0.0.1,::1`.
+
+For intentional compatibility with the retired proxy, most error bodies are
+preserved. RPC execution errors are the exception: they are serialized as
+`{ "error": { "message", "code" } }` rather than Express's empty object for
+an `Error` instance. `signmessagewithprivkey` is deliberately not exposed;
+clients must sign locally. `sendrawtransaction` remains available for wallet
+broadcasting.
 - Auth in the HTTP upgrade via `Sec-WebSocket-Protocol: wss, auth.<token>`.
 - Built-in rate limiting (`503 Retry-After`) and session/subscription caps.
 - ZMQ subscriber to the Neurai node (`hashblock` + `rawtx`) with polling

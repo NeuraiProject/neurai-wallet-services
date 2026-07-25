@@ -1,6 +1,7 @@
 const process = require("process");
 const getConfig = require("./getConfig");
 const wss = require("./wss");
+const httpServiceMod = require("./http");
 
 process.on("uncaughtException", (error, origin) => {
   console.log("----- Uncaught exception -----");
@@ -18,6 +19,11 @@ process.on("unhandledRejection", (reason, promise) => {
 
 const config = getConfig();
 
+if (config.http && config.http.enabled === true && (!config.wss || config.wss.enabled !== true)) {
+  console.log("[HTTP] http.enabled requires wss.enabled because both protocols share its listener.");
+  process.exit(1);
+}
+
 if (!config.wss || config.wss.enabled !== true) {
   console.log(
     "[WSS] disabled in config (wss.enabled !== true). Nothing to start.",
@@ -26,7 +32,8 @@ if (!config.wss || config.wss.enabled !== true) {
 }
 
 try {
-  wss.start(config.wss, config);
+  const httpService = httpServiceMod.create(config.http, config);
+  wss.start(config.wss, config, httpService);
 } catch (e) {
   console.log("[WSS] failed to start:", e && e.message ? e.message : e);
   process.exit(1);

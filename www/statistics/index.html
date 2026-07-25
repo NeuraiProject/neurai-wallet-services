@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/@picocss/pico@1.*/css/pico.min.css"
+    />
+    <title>Statistics</title>
+  </head>
+  <body>
+    <main class="container">
+      <h3>Statistics</h3>
+      <a href="/" role="button">Back</a>
+      <article>
+        <h5>Nodes</h5>
+        <pre id="nodes"></pre>
+      </article>
+      <article>
+        <h5>Methods</h5>
+        <table id="table"></table>
+      </article>
+      <article>
+        <h5>Misc</h5>
+        <pre id="stuff"></pre>
+      </article>
+    </main>
+
+    <script type="module">
+      import axios from "https://cdn.skypack.dev/axios";
+
+      async function rpc(method, params = []) {
+        const URL = "/rpc";
+        const axiosResponse = await axios.post(URL, { method, params });
+        return axiosResponse.data.result;
+      }
+      const response = await fetch("/getCache");
+      const data = await response.json();
+
+      for (let node of data.nodes) {
+        try {
+          const block = await rpc("getblock", [node.bestblockhash]);
+          node.blockCount = block.height.toLocaleString();
+        } catch (e) {
+          console.dir(e);
+        }
+      }
+      document.getElementById("nodes").innerHTML = JSON.stringify(
+        data.nodes,
+        null,
+        4
+      );
+      document.getElementById("stuff").innerHTML = JSON.stringify(
+        data,
+        null,
+        4
+      );
+
+      const html = getTableHTML(data.methods);
+
+      document.getElementById("table").innerHTML = html;
+
+      function getTableHTML(methods) {
+        //Sort methods by date
+
+        const list2 = [];
+        Object.entries(methods).map((entry) =>
+          list2.push({
+            method: entry[0],
+            date: new Date(entry[1]),
+          })
+        );
+        function sort(a, b) {
+          if (a.date > b.date) {
+            return -1;
+          }
+          if (b.date > a.date) {
+            return 1;
+          }
+          return 0;
+        }
+        const list = list2.sort(sort);
+
+        const trList = list.map((entry) => {
+          const m = entry.method;
+          const d = entry.date.toLocaleString();
+          return `<tr><td>${m}</td><td>${d}</td></tr>`;
+        });
+        return ` <thead>
+            <tr>
+                <th>Method</th>
+                <th>Date</th>
+            </thead>
+        <tbody>
+          ${trList.join("")}
+        </tbody>`;
+      }
+    </script>
+  </body>
+</html>

@@ -30,6 +30,20 @@
     "poll_interval_ms": 5000,
     "mempool_interval_ms": 3000
   },
+  "http": {
+    "enabled": false,
+    "serve_www": true,
+    "heading": "Neurai RPC",
+    "environment": "Neurai Testnet",
+    "endpoint": "https://rpc-test.neurai.org/rpc",
+    "concurrency": 4,
+    "max_requests_per_second": 100,
+    "max_requests_per_second_per_ip": 20,
+    "max_queue_size": 500,
+    "rate_limiter_ttl_ms": 300000,
+    "max_rate_limiter_ips": 10000,
+    "trusted_proxy_ips": ["127.0.0.1", "::1", "::ffff:127.0.0.1"]
+  },
   "nodes": [
     {
       "name": "Local Neurai Node with DePIN",

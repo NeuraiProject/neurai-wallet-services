@@ -19,7 +19,8 @@ function cleanExpiredChallenges() {
 }
 
 // Clean expired challenges every 30 seconds
-setInterval(cleanExpiredChallenges, 30000);
+const cleanupTimer = setInterval(cleanExpiredChallenges, 30000);
+if (cleanupTimer.unref) cleanupTimer.unref();
 
 /**
  * Request a challenge from the DePIN server

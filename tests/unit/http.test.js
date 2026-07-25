@@ -25,10 +25,12 @@ test("HTTP routes, cache invalidation and method guard", async () => {
   });
   const server = http.createServer(service.handleRequest);
   await new Promise((resolve) => server.listen(0, resolve));
-  const getRpc = await request(server, "GET", "/rpc");
-  expect(getRpc.status).toBe(405);
-  expect(getRpc.headers.allow).toBe("POST");
-  expect(getRpc.body).toEqual({ description: "Please use the HTTP POST method to proceed. For more details, refer to our documentation." });
+  for (const path of ["/rpc", "/depin", "/depin/challenge"]) {
+    const getOnly = await request(server, "GET", path);
+    expect(getOnly.status).toBe(405);
+    expect(getOnly.headers.allow).toBe("POST");
+    expect(getOnly.body).toEqual({ description: "Please use the HTTP POST method to proceed. For more details, refer to our documentation." });
+  }
   const first = await request(server, "POST", "/rpc", { method: "getblockcount", params: [] });
   expect(first.body).toEqual({ result: 123 });
   await request(server, "POST", "/rpc", { method: "getblockcount", params: [] });

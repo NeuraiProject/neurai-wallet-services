@@ -45,7 +45,8 @@ function createHandler(deps) {
     if (req.method === "GET" && pathname === "/whitelist") return sendJson(res, 200, deps.whitelist);
     if (req.method === "GET" && pathname === "/getCache") return sendJson(res, 200, deps.getCache());
     if (req.method === "GET" && pathname === "/settings") return sendJson(res, 200, deps.settings);
-    if (req.method === "GET" && pathname === "/rpc") return sendJson(res, 405, { description: "Please use the HTTP POST method to proceed. For more details, refer to our documentation." }, { allow: "POST" });
+    // Body text kept verbatim from the retired proxy's GET /rpc response.
+    if (req.method === "GET" && POST_ROUTES[pathname]) return sendJson(res, 405, { description: "Please use the HTTP POST method to proceed. For more details, refer to our documentation." }, { allow: "POST" });
     const postRoute = req.method === "POST" ? POST_ROUTES[pathname] : undefined;
     if (postRoute) {
       try {

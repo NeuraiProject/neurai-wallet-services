@@ -54,7 +54,9 @@ preserved. RPC execution errors are the exception: they are serialized as
 an `Error` instance. `signmessagewithprivkey` is deliberately not exposed;
 clients must sign locally. `sendrawtransaction` remains available for wallet
 broadcasting. `POST /depin/challenge` is an addition with no counterpart in the
-proxy, which left HTTP clients unable to obtain the challenge to sign.
+proxy, which left HTTP clients unable to obtain the challenge to sign. Every
+POST-only route answers `GET` with `405` and `Allow: POST`; the proxy did that
+for `/rpc` alone and fell through to a `404` on `/depin`.
 - Auth in the HTTP upgrade via `Sec-WebSocket-Protocol: wss, auth.<token>`.
 - Built-in rate limiting (`503 Retry-After`) and session/subscription caps.
 - ZMQ subscriber to the Neurai node (`hashblock` + `rawtx`) with polling

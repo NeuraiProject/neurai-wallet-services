@@ -7,8 +7,12 @@ services:
     # No local build needed — pull the pinned tag instead of compiling from
     # source. The official image is mainnet-only; testnet keeps building from
     # ../node because the official image does not support a testnet switch.
-    image: neuraiproject/neurai-node:v1.0.5
+    image: neuraiproject/neurai-node:v1.0.6
     restart: unless-stopped
+    # The official entrypoint lets neuraid flush its databases on shutdown.
+    # Avoid Docker's default 10-second timeout, which can cause a long reindex
+    # after an unclean stop.
+    stop_grace_period: 5m
 
     logging:
       driver: "json-file"
@@ -16,14 +20,14 @@ services:
         max-size: "10m"
         max-file: "5"
 
-    # The official image's /node.sh entrypoint hardcodes datadir to /data/node
-    # and only writes its own neurai.conf when the file is missing — and it does
-    # NOT enable ZMQ. We mount our own neurai.conf (read-only) at that path so it
-    # takes precedence: this keeps ZMQ on (tcp://neuraid:28332, required by
-    # rpc-proxy) plus the RPC/index settings. Edit ./neurai.conf to change them.
+    # v1.0.6 stores its datadir and configuration directly in /data. Its
+    # entrypoint only generates /data/neurai.conf when absent, without our ZMQ
+    # settings. Mount the repository's config read-only so rpc-proxy keeps its
+    # ZMQ endpoint (tcp://neuraid:28332), plus the required RPC/index settings.
+    # Edit ./neurai.conf to change them.
     volumes:
       - neurai_data_mainnet:/data
-      - ./neurai.conf:/data/node/neurai.conf:ro
+      - ./neurai.conf:/data/neurai.conf:ro
 
     # Internal-only — the node is not reachable from the host. The rpc-proxy
     # container talks to neuraid:19001 (RPC) and neuraid:28332 (ZMQ) over the
@@ -33,12 +37,18 @@ services:
       - neurai_net_mainnet
 
     healthcheck:
-      # datadir is /data/node in the official image (not /data).
-      test: ["CMD", "neurai-cli", "-datadir=/data/node", "getblockchaininfo"]
+      test: ["CMD", "neurai-cli", "-datadir=/data", "getblockchaininfo"]
       interval: 60s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      # A first start may need time to initialize the chain state.
+      start_period: 10m
+
+    # Matches the official v1.0.6 deployment recommendation for an indexer.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
 
   rpc-proxy:
     build:

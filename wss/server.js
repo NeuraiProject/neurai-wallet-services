@@ -15,6 +15,8 @@ const zmqWatcher = require("./zmq-watcher");
 const poller = require("./poller");
 const nodeHealth = require("./node-health");
 const keepalive = require("./keepalive");
+const { describeForLog } = require("../rpcError");
+const { clientIp, resolveTrustedProxies } = require("../clientIp");
 
 const MAX_PAYLOAD_BYTES = 64 * 1024;
 
@@ -98,12 +100,6 @@ function pathOf(req) {
   const url = req.url || "/";
   const qIdx = url.indexOf("?");
   return qIdx === -1 ? url : url.slice(0, qIdx);
-}
-
-function clientIp(req) {
-  const xff = req.headers["x-forwarded-for"];
-  if (xff) return String(xff).split(",")[0].trim();
-  return (req.socket && req.socket.remoteAddress) || null;
 }
 
 function startCertReloader(server, config) {
@@ -203,6 +199,9 @@ function start(config, ctx, httpService) {
   });
 
   const tryAcceptConn = createRateLimiter(config.max_new_connections_per_second || 50);
+  // Same rule as HTTP: X-Forwarded-For only from a configured trusted proxy.
+  // Session IPs feed the shared DePIN quota, so they must not be forgeable.
+  const trustedProxies = resolveTrustedProxies(ctx && ctx.globalConfig);
 
   attachHttpService(server, httpService);
 
@@ -226,7 +225,7 @@ function start(config, ctx, httpService) {
   });
 
   wss.on("connection", (ws, req) => {
-    const session = sessionMod.createSession(ws, clientIp(req));
+    const session = sessionMod.createSession(ws, clientIp(req, trustedProxies));
     keepalive.start(ws, session, config);
 
     ws.on("message", async (raw) => {
@@ -258,7 +257,7 @@ function start(config, ctx, httpService) {
             try { ws.close(protocol.WS_CLOSE_CODES.UNSUPPORTED_PROTOCOL, "unsupported protocol"); } catch {}
           }
         } else {
-          console.log("[WSS] handler error:", e && e.message ? e.message : e);
+          console.log("[WSS] handler error:", describeForLog(e));
           sessionMod.sendJson(
             session,
             makeError(msg.id, ERROR_CODES.INTERNAL_ERROR, "internal error"),
@@ -303,17 +302,17 @@ function startChainEvents(config, httpService) {
     onBlock: (hash) => {
       if (httpService) httpService.onBlock(hash);
       chainEvents.onBlock(hash).catch((e) =>
-        console.log("[chain-events] onBlock error:", e && e.message ? e.message : e),
+        console.log("[chain-events] onBlock error:", describeForLog(e)),
       );
     },
     onRawTx: (buf) => {
       chainEvents.onRawTx(buf).catch((e) =>
-        console.log("[chain-events] onRawTx error:", e && e.message ? e.message : e),
+        console.log("[chain-events] onRawTx error:", describeForLog(e)),
       );
     },
     onMempoolAdded: (txids) => {
       chainEvents.onMempoolAdded(txids).catch((e) =>
-        console.log("[chain-events] onMempoolAdded error:", e && e.message ? e.message : e),
+        console.log("[chain-events] onMempoolAdded error:", describeForLog(e)),
       );
     },
     onInitialTip: (hash) => {
@@ -353,7 +352,7 @@ function startChainEvents(config, httpService) {
       handlersForWatchers,
     );
   })().catch((e) =>
-    console.log("[chain-events] startup error:", e && e.message ? e.message : e),
+    console.log("[chain-events] startup error:", describeForLog(e)),
   );
 }
 

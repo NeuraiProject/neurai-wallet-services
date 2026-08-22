@@ -2,6 +2,8 @@ const process = require("process");
 const getConfig = require("./getConfig");
 const wss = require("./wss");
 const httpServiceMod = require("./http");
+const { resolveTrustedProxies } = require("./clientIp");
+const { resolveDepinConfig } = require("./depinRateLimit");
 
 process.on("uncaughtException", (error, origin) => {
   console.log("----- Uncaught exception -----");
@@ -32,6 +34,9 @@ if (!config.wss || config.wss.enabled !== true) {
 }
 
 try {
+  // Root-level settings shared by both transports; fail early and clearly.
+  resolveTrustedProxies(config);
+  resolveDepinConfig(config);
   const httpService = httpServiceMod.create(config.http, config);
   wss.start(config.wss, config, httpService);
 } catch (e) {

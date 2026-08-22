@@ -5,8 +5,15 @@ set -eu
 : "${NEURAI_NODE_URL:=http://neuraid:19101}"
 : "${NEURAI_RPC_USER:=neurai}"
 : "${NEURAI_RPC_PASSWORD:=changeme}"
-: "${NEURAI_DEPIN_ENABLED:=false}"
-: "${NEURAI_DEPIN_URL:=http://neuraid:19102}"
+# DePIN protocol 2 is served on the node's RPC port through NEURAI_NODE_URL.
+# The protocol 1 gateway settings no longer exist on the proxy side.
+if [ -n "${NEURAI_DEPIN_ENABLED:-}${NEURAI_DEPIN_URL:-}" ]; then
+  echo "[entrypoint] NOTE: NEURAI_DEPIN_ENABLED/NEURAI_DEPIN_URL are obsolete and ignored (DePIN protocol 2 uses NEURAI_NODE_URL)." >&2
+fi
+# depin* abuse control by origin IP, shared by HTTP and WSS: requests per IP
+# and minute, and how long an IP that went over is blocked (0 = no ban).
+: "${PROXY_DEPIN_RATE_LIMIT:=60}"
+: "${PROXY_DEPIN_BAN_MINUTES:=10}"
 : "${PROXY_WSS_ENABLED:=false}"
 : "${PROXY_WSS_PORT:=19020}"
 : "${PROXY_WSS_PATH:=/push}"
@@ -43,9 +50,14 @@ set -eu
 : "${PROXY_HTTP_MAX_QUEUE_SIZE:=500}"
 : "${PROXY_HTTP_RATE_LIMITER_TTL_MS:=300000}"
 : "${PROXY_HTTP_MAX_RATE_LIMITER_IPS:=10000}"
-: "${PROXY_HTTP_TRUSTED_PROXIES:=127.0.0.1,::1,::ffff:127.0.0.1}"
+# Reverse proxies whose X-Forwarded-For is believed, for HTTP and WSS alike.
+# PROXY_HTTP_TRUSTED_PROXIES is the former name and still honoured.
+: "${PROXY_TRUSTED_PROXIES:=${PROXY_HTTP_TRUSTED_PROXIES:-127.0.0.1,::1,::ffff:127.0.0.1}}"
+# A default assigned by `:` is a shell variable, not an exported one: node
+# would otherwise read an empty string and emit [] (no proxy trusted).
+export PROXY_TRUSTED_PROXIES
 
-PROXY_HTTP_TRUSTED_PROXY_IPS_JSON="$(node -e 'const values = (process.env.PROXY_HTTP_TRUSTED_PROXIES || "").split(",").map((value) => value.trim()).filter(Boolean); process.stdout.write(JSON.stringify(values));')"
+PROXY_TRUSTED_PROXY_IPS_JSON="$(node -e 'const values = (process.env.PROXY_TRUSTED_PROXIES || "").split(",").map((value) => value.trim()).filter(Boolean); process.stdout.write(JSON.stringify(values));')"
 
 if [ "${PROXY_WSS_ENABLED}" = "true" ] \
    && [ "${PROXY_WSS_TLS_ENABLED}" = "true" ] \
@@ -66,6 +78,11 @@ fi
 
 cat > /app/config.json <<EOF
 {
+  "trusted_proxy_ips": ${PROXY_TRUSTED_PROXY_IPS_JSON},
+  "depin": {
+    "rate_limit": ${PROXY_DEPIN_RATE_LIMIT},
+    "ban_minutes": ${PROXY_DEPIN_BAN_MINUTES}
+  },
   "wss": {
     "enabled": ${PROXY_WSS_ENABLED},
     "host": "0.0.0.0",
@@ -105,17 +122,14 @@ cat > /app/config.json <<EOF
     "max_requests_per_second_per_ip": ${PROXY_HTTP_MAX_RPS_PER_IP},
     "max_queue_size": ${PROXY_HTTP_MAX_QUEUE_SIZE},
     "rate_limiter_ttl_ms": ${PROXY_HTTP_RATE_LIMITER_TTL_MS},
-    "max_rate_limiter_ips": ${PROXY_HTTP_MAX_RATE_LIMITER_IPS},
-    "trusted_proxy_ips": ${PROXY_HTTP_TRUSTED_PROXY_IPS_JSON}
+    "max_rate_limiter_ips": ${PROXY_HTTP_MAX_RATE_LIMITER_IPS}
   },
   "nodes": [
     {
       "name": "${NEURAI_NODE_NAME}",
       "username": "${NEURAI_RPC_USER}",
       "password": "${NEURAI_RPC_PASSWORD}",
-      "neurai_url": "${NEURAI_NODE_URL}",
-      "depin_enabled": ${NEURAI_DEPIN_ENABLED},
-      "depin_url": "${NEURAI_DEPIN_URL}"
+      "neurai_url": "${NEURAI_NODE_URL}"
     }
   ]
 }

@@ -33,8 +33,24 @@ services:
       NEURAI_RPC_THREADS: "8"
 
       # ── Wallet ───────────────────────────────────────────────────────────
-      # NEURAI_DISABLE_WALLET: 1=disabled | 0=enabled
-      NEURAI_DISABLE_WALLET: "1"
+      # NEURAI_DISABLE_WALLET: 1=disabled | 0=enabled. DePIN needs it enabled:
+      # the pool key is derived from a dedicated, unencrypted wallet that must
+      # never hold funds (see NEURAI_DEPIN_WALLET).
+      NEURAI_DISABLE_WALLET: "0"
+
+      # ── DePIN messaging (protocol 2) ──────────────────────────────────────
+      # Served on the RPC port (19101). No DePIN port, URL or gateway exists;
+      # rpc-proxy relays the depin* RPCs through NEURAI_NODE_URL. The
+      # entrypoint refuses to start without a token or with the wallet off.
+      NEURAI_DEPIN_ENABLED: "1"
+      NEURAI_DEPIN_TOKEN: "&DEPINTESTING"
+      # Per-address quota enforced by the node (challenges + submissions / min).
+      NEURAI_DEPIN_RATE_LIMIT: "20"
+      NEURAI_DEPIN_MAX_MESSAGE_SIZE: "1024"
+      NEURAI_DEPIN_MESSAGE_EXPIRY: "168"
+      NEURAI_DEPIN_MAX_POOL_SIZE: "100"
+      NEURAI_DEPIN_MAX_RECIPIENTS: "20"
+      # NEURAI_DEPIN_WALLET: "depin.dat"   # optional dedicated wallet file
 
       # ── Indexes ──────────────────────────────────────────────────────────
       NEURAI_TXINDEX: "1"
@@ -88,9 +104,18 @@ services:
       NEURAI_NODE_URL: "http://neuraid:19101"
       NEURAI_RPC_USER: "neurai"
       NEURAI_RPC_PASSWORD: "changeme"
-      # Enable to expose DePIN methods (depin.*) on WSS. Requires the Neurai node
-      # to be running with DePIN messaging service on depin_url.
-      NEURAI_DEPIN_ENABLED: "false"
+      # DePIN protocol 2 goes through NEURAI_NODE_URL like any other RPC. The
+      # proxy only adds a per-IP quota for depin* (shared by HTTP and WSS):
+      # requests per minute, and minutes an IP that went over stays blocked.
+      PROXY_DEPIN_RATE_LIMIT: "60"
+      PROXY_DEPIN_BAN_MINUTES: "10"
+      # Reverse proxies whose X-Forwarded-For is believed (HTTP and WSS). When
+      # using Hestia/nginx on the host, add this Compose network's bridge
+      # gateway (inspect it with `docker network inspect neurai_net_testnet`).
+      # The reverse proxy must OVERWRITE the header ($remote_addr), never
+      # append to it ($proxy_add_x_forwarded_for).
+      PROXY_TRUSTED_PROXIES: "127.0.0.1,::1,::ffff:127.0.0.1"
+      # PROXY_TRUSTED_PROXIES: "172.19.0.1,127.0.0.1,::1"
       PROXY_WSS_ENABLED: "true"
       PROXY_WSS_PORT: "19020"
       PROXY_WSS_PATH: "/push"
@@ -101,9 +126,6 @@ services:
       PROXY_HTTP_ENVIRONMENT: "Neurai Testnet"
       PROXY_HTTP_ENDPOINT: "https://rpc-test.neurai.org/rpc"
       PROXY_HTTP_MAX_RPS_PER_IP: "20"
-      # When using Hestia/nginx on the host, add this Compose network's bridge
-      # gateway (inspect it with `docker network inspect neurai_net_testnet`).
-      # PROXY_HTTP_TRUSTED_PROXIES: "172.19.0.1,127.0.0.1,::1"
       # Default deployment: behind a host reverse proxy that terminates TLS
       # (HestiaCP / nginx / Caddy / etc). The proxy listens on plain ws://
       # internally and the reverse proxy on the host adds TLS + LE renewal.
@@ -123,7 +145,7 @@ services:
       #       proxy_read_timeout 3600s;
       #   }
       #
-      #   # Public HTTP RPC (`/rpc`, `/depin`, UI and metadata). Do not set
+      #   # Public HTTP RPC (`/rpc`, UI and metadata). Do not set
       #   # Upgrade/Connection here: these are ordinary HTTP requests.
       #   location / {
       #       proxy_pass http://127.0.0.1:19020;

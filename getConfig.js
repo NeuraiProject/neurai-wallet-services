@@ -8,6 +8,11 @@ function getConfig() {
 
     const template = `
     {
+      "trusted_proxy_ips": ["127.0.0.1", "::1", "::ffff:127.0.0.1"],
+      "depin": {
+        "rate_limit": 60,
+        "ban_minutes": 10
+      },
       "wss": {
         "enabled": true,
         "host": "0.0.0.0",
@@ -25,12 +30,10 @@ function getConfig() {
       },
       "nodes": [
         {
-          "name": "Local Neurai Node with DePIN",
+          "name": "Local Neurai node",
           "username": "dauser",
           "password": "dapassword",
-          "neurai_url": "http://localhost:19001",
-          "depin_enabled": true,
-          "depin_url": "http://localhost:19002"
+          "neurai_url": "http://localhost:19001"
         }
       ]
     }

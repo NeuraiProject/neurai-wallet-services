@@ -8,6 +8,7 @@ const chainState = require("./chain-state");
 const nodeHealth = require("./node-health");
 const cursor = require("./cursor");
 const depin = require("./depin-methods");
+const { toClientError, describeForLog } = require("../rpcError");
 
 // Normalize the `assets` param into either:
 //   { kind: "none" }   — native XNA only (default)
@@ -366,7 +367,7 @@ const handlers = {
             address,
             error: {
               code: ERROR_CODES.INTERNAL_ERROR,
-              message: e && e.message ? e.message : "subscribe failed",
+              message: toClientError(e, "subscribe failed").message,
             },
           };
         }
@@ -472,10 +473,7 @@ const handlers = {
         deltas = await callRPC("getaddressdeltas", [rpcParams]);
         if (!Array.isArray(deltas)) deltas = [];
       } catch (e) {
-        console.log(
-          "[methods] getaddressdeltas failed:",
-          e && e.message ? e.message : e,
-        );
+        console.log("[methods] getaddressdeltas failed:", describeForLog(e));
         deltas = [];
       }
 
@@ -666,8 +664,10 @@ const handlers = {
       const txid = await callRPC("sendrawtransaction", [params.rawtx]);
       return { txid };
     } catch (e) {
-      const msg = e && e.message ? e.message : "broadcast failed";
-      throw new MethodError(ERROR_CODES.INTERNAL_ERROR, msg);
+      // The node's message (e.g. "txn-mempool-conflict") and code reach the
+      // wallet; an upstream failure is reported neutrally.
+      const err = toClientError(e, "broadcast failed");
+      throw new MethodError(ERROR_CODES.INTERNAL_ERROR, err.message, { code: err.code });
     }
   },
 

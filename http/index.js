@@ -2,6 +2,9 @@ const { default: PQueue } = require("p-queue");
 const { whitelist, isWhitelisted } = require("./whitelist");
 const cacheServiceMod = require("./cache-service");
 const { createHandler, sendJson } = require("./router");
+const { toClientError, getRPCErrorMessage, describeForLog } = require("../rpcError");
+const { clientIp, resolveTrustedProxies } = require("../clientIp");
+const { getSharedLimiter, isDepinMethod, refusalDescription } = require("../depinRateLimit");
 
 function createRateLimiter(limit) {
   const recent = [];
@@ -22,14 +25,6 @@ function positiveInt(value, fallback, name) {
   return result;
 }
 
-function clientIp(req, trustedProxies) {
-  const remote = (req.socket && req.socket.remoteAddress) || "unknown";
-  // A forwarded header is client-controlled unless its immediate peer is an
-  // explicitly configured trusted proxy.
-  if (trustedProxies.has(remote) && req.headers["x-forwarded-for"]) return String(req.headers["x-forwarded-for"]).split(",")[0].trim();
-  return remote;
-}
-
 function create(rawCfg, globalConfig, injected = {}) {
   if (!rawCfg || rawCfg.enabled !== true) return null;
   const cfg = {
@@ -43,15 +38,16 @@ function create(rawCfg, globalConfig, injected = {}) {
     max_queue_size: positiveInt(rawCfg.max_queue_size, 500, "max_queue_size"),
     rate_limiter_ttl_ms: positiveInt(rawCfg.rate_limiter_ttl_ms, 5 * 60 * 1000, "rate_limiter_ttl_ms"),
     max_rate_limiter_ips: positiveInt(rawCfg.max_rate_limiter_ips, 10000, "max_rate_limiter_ips"),
-    trusted_proxy_ips: rawCfg.trusted_proxy_ips == null ? ["127.0.0.1", "::1", "::ffff:127.0.0.1"] : rawCfg.trusted_proxy_ips,
   };
-  if (!Array.isArray(cfg.trusted_proxy_ips) || !cfg.trusted_proxy_ips.every((ip) => typeof ip === "string" && ip.length > 0)) throw new Error("[HTTP] trusted_proxy_ips must be an array of IP addresses");
   if (cfg.max_requests_per_second_per_ip > cfg.max_requests_per_second) throw new Error("[HTTP] max_requests_per_second_per_ip cannot exceed max_requests_per_second");
-  const trustedProxies = new Set(cfg.trusted_proxy_ips);
+  // trusted_proxy_ips is shared with WSS and lives at the root of config.json;
+  // the former http.trusted_proxy_ips is still honoured (see clientIp.js).
+  const trustedProxies = injected.trustedProxies || resolveTrustedProxies(globalConfig || { http: rawCfg });
   // Lazy defaults avoid loading config-bound node modules in unit tests.
   const nodeDeps = injected.nodeDeps || require("../getRPCNode");
-  const depinService = injected.depinService || require("../depinService");
   const rpc = injected.rpc || require("../wss/rpc").callRPC;
+  // One limiter for depin* across HTTP and WSS, keyed by client IP.
+  const depinLimiter = injected.depinLimiter || getSharedLimiter(globalConfig);
   const queue = new PQueue({ concurrency: cfg.concurrency });
   const cache = cacheServiceMod.create();
   const limits = new Map();
@@ -92,6 +88,17 @@ function create(rawCfg, globalConfig, injected = {}) {
     if (method === "listaddressesbyasset" && Array.isArray(params) && params[1] === true) {
       return sendJson(res, 404, { error: "Not in whitelist", description: `Method ${method} with totalCount set to true is not whitelisted. Please use ${method} without totalCount = true` });
     }
+    // DePIN abuse control by origin IP: over the limit, the IP is blocked for
+    // a while and every depin* call answers 429 until it lapses. The node
+    // applies its own per-address quota behind this one.
+    if (isDepinMethod(method)) {
+      const ip = clientIp(req, trustedProxies);
+      const verdict = depinLimiter.check(ip, Date.now());
+      if (!verdict.allowed) {
+        if (verdict.justBanned) console.log(`[HTTP] DePIN rate limit exceeded, banning ${ip} for ${depinLimiter.stats().ban_minutes} minutes`);
+        return sendJson(res, 429, { error: "Too many requests", description: refusalDescription(verdict, depinLimiter) }, { "retry-after": String(verdict.retryAfterSeconds) });
+      }
+    }
     if (queue.size >= cfg.max_queue_size) return sendJson(res, 503, { error: "queue full" }, { "retry-after": "1" });
     try {
       const result = await queue.add(async () => {
@@ -105,58 +112,32 @@ function create(rawCfg, globalConfig, injected = {}) {
         if (cache.shouldCache(method)) { cache.put(method, params, promise); promise.catch(() => cache.remove(method, params)); }
         return promise;
       });
-      if (result === undefined || req.aborted || res.destroyed) return;
-      return sendJson(res, 200, { result });
+      if (req.aborted || res.destroyed) return;
+      // neurai-rpc 0.4.7 resolved `undefined` for a JSON-RPC error delivered
+      // with HTTP 200, which left the request without a response. 0.5.0+
+      // rejects instead; keep `null` here so nothing can hang.
+      return sendJson(res, 200, { result: result === undefined ? null : result });
     } catch (e) {
-      if (method === "checkdepinvalidity" && e && e.message && e.message.includes("must start with &")) return sendJson(res, 200, { result: { valid: false, isDePinAsset: false, message: "Not a DePIN asset (assets must start with & to be DePIN assets)" } });
-      return sendJson(res, 500, { error: { message: e && e.message ? e.message : "RPC request failed", code: e && e.code } });
+      if (method === "checkdepinvalidity" && getRPCErrorMessage(e).includes("must start with &")) return sendJson(res, 200, { result: { valid: false, isDePinAsset: false, message: "Not a DePIN asset (assets must start with & to be DePIN assets)" } });
+      const err = toClientError(e);
+      // Node JSON-RPC errors keep the documented 500 + {message, code}; an
+      // upstream failure (unreachable node, bad credentials, non-JSON reply) is
+      // 502 with a neutral message and the detail only in the log.
+      if (err.upstream) { console.log(`[HTTP] ${method}: ${describeForLog(e)}`); return sendJson(res, 502, { error: { message: err.message, code: null } }); }
+      return sendJson(res, 500, { error: { message: err.message, code: err.code } });
     }
-  }
-
-  // Mirrors the WSS `depin.challenge` method. Without it an HTTP client has no
-  // way to learn the challenge it is expected to sign, so POST /depin only
-  // worked when some other caller had already warmed the challenge cache.
-  async function handleDePinChallenge(body, req, res) {
-    const address = body && body.address;
-    if (!address || typeof address !== "string") return sendJson(res, 400, { error: "Missing or invalid address", description: "Request must include a valid 'address' field" });
-    const depinNode = nodeDeps.getDePinNode();
-    try {
-      const { challenge, timeout, expiresAt } = await depinService.requestChallenge(depinNode.depinUrl, address);
-      countRequest();
-      return sendJson(res, 200, { result: { challenge, timeout, expires_at: new Date(expiresAt).toISOString() } });
-    } catch (e) { return sendJson(res, 500, { error: e && e.message ? e.message : "challenge request failed" }); }
-  }
-
-  async function handleDePin(body, req, res) {
-    const { address, signature, method, params } = body || {};
-    if (!address || typeof address !== "string") return sendJson(res, 400, { error: "Missing or invalid address", description: "Request must include a valid 'address' field" });
-    if (!signature || typeof signature !== "string") return sendJson(res, 400, { error: "Missing or invalid signature", description: "Request must include a valid 'signature' field (base64-encoded)" });
-    if (!method || typeof method !== "string") return sendJson(res, 400, { error: "Missing or invalid method", description: "Request must include a valid 'method' field" });
-    if (!Array.isArray(params)) return sendJson(res, 400, { error: "Missing or invalid params", description: "Request must include a 'params' array" });
-    if (!isWhitelisted(method)) return sendJson(res, 404, { error: "Not in whitelist", description: `Method ${method} is not supported` });
-    const depinNode = nodeDeps.getDePinNode();
-    let modified = params;
-    if ((method === "depingetmsg" || method === "depinsendmsg") && params.length >= 2 && (!params[1] || params[1] === "auto")) {
-      modified = [...params];
-      try { modified[1] = new URL(depinNode.depinUrl).host; } catch { modified[1] = "localhost:19002"; }
-    }
-    try {
-      const result = await depinService.executeDePinRPC(depinNode.depinUrl, address, async () => signature, method, modified);
-      countRequest();
-      return sendJson(res, 200, { result });
-    } catch (e) { return sendJson(res, 500, { error: e && e.message ? e.message : "Something went wrong with DePIN request" }); }
   }
 
   function getStats() {
-    return { queue: { size: queue.size, pending: queue.pending }, cache_items: cache.getKeys().length, rate_limiter_ips: limits.size, numberOfRequests: numberOfRequests.toLocaleString() };
+    return { queue: { size: queue.size, pending: queue.pending }, cache_items: cache.getKeys().length, rate_limiter_ips: limits.size, numberOfRequests: numberOfRequests.toLocaleString(), depin_rate_limit: depinLimiter.stats() };
   }
   function getCache() {
     const result = { numberOfItemsInCache: cache.getKeys().length };
     for (const [key, value] of Object.entries(process.memoryUsage())) result[key] = `Memory usage by ${key}, ${Math.round(value / 1000000)} MB `;
-    result.queueSize = queue.size; result.numberOfRequests = numberOfRequests.toLocaleString(); result.methods = cache.getMethods(); result.depinChallenges = depinService.getCacheStats(); result.nodes = nodeDeps.getNodes(); result.depinNodes = nodeDeps.getDePinNodes();
+    result.queueSize = queue.size; result.numberOfRequests = numberOfRequests.toLocaleString(); result.methods = cache.getMethods(); result.nodes = nodeDeps.getNodes(); result.depinRateLimit = depinLimiter.stats();
     return result;
   }
-  const handleRequest = createHandler({ whitelist, getCache, settings: { heading: cfg.heading, environment: cfg.environment, endpoint: cfg.endpoint }, serveWww: cfg.serve_www, tryAccept, handleRpc, handleDePin, handleDePinChallenge });
+  const handleRequest = createHandler({ whitelist, getCache, settings: { heading: cfg.heading, environment: cfg.environment, endpoint: cfg.endpoint }, serveWww: cfg.serve_www, tryAccept, handleRpc });
   return { handleRequest, getStats, onBlock(hash) { if (hash && hash !== lastBlockHash) { lastBlockHash = hash; cache.clear(); } } };
 }
 

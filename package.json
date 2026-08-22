@@ -1,11 +1,10 @@
 {
   "name": "neurai-wallet-services",
   "version": "1.0.0",
-  "description": "Neurai wallet services: live address push, tx broadcast, DePIN messaging over WebSocket. Backend for mobile and light wallets.",
+  "description": "Neurai wallet services: live address push, tx broadcast and DePIN protocol 2 relay (JSON-RPC over WSS and HTTP). Backend for mobile and light wallets.",
   "main": "index.js",
   "dependencies": {
-    "@neuraiproject/neurai-rpc": "^0.4.7",
-    "node-fetch": "^2.7.0",
+    "@neuraiproject/neurai-rpc": "^0.6.0",
     "p-queue": "6.6.2",
     "ws": "^8.18.0"
   },

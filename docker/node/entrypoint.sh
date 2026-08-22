@@ -43,6 +43,36 @@ zmqpubhashtx=${NEURAI_ZMQ_PUB_HASHTX:-$ZMQ_BIND}
 EOF
 fi
 
+# DePIN messaging (protocol 2). Served on the RPC port above: there is no
+# DePIN port, gateway or extra healthcheck. The pool key is derived from the
+# node's wallet (m/44'/<coin>'/200'/<change>/0), which must therefore be
+# enabled, dedicated, unencrypted and never funded. Rotating it changes the
+# pool identity every client has pinned — back it up.
+if [ "${NEURAI_DEPIN_ENABLED:-0}" = "1" ]; then
+  if [ -z "${NEURAI_DEPIN_TOKEN:-}" ]; then
+    echo "[entrypoint] ERROR: NEURAI_DEPIN_ENABLED=1 but NEURAI_DEPIN_TOKEN is empty - set the pool root token (e.g. &DEPINTESTING)." >&2
+    exit 1
+  fi
+  if [ "${NEURAI_DISABLE_WALLET:-1}" != "0" ]; then
+    echo "[entrypoint] ERROR: NEURAI_DEPIN_ENABLED=1 requires NEURAI_DISABLE_WALLET=0: the pool key is derived from the node's (dedicated, unencrypted, legacy BIP44) wallet." >&2
+    exit 1
+  fi
+  cat >> "$DATA_DIR/neurai.conf" <<EOF
+
+# DePIN messaging (protocol 2, on the RPC port)
+depinmsg=1
+depinmsgtoken=${NEURAI_DEPIN_TOKEN}
+depinratelimit=${NEURAI_DEPIN_RATE_LIMIT:-20}
+depinmsgsize=${NEURAI_DEPIN_MAX_MESSAGE_SIZE:-1024}
+depinmsgexpire=${NEURAI_DEPIN_MESSAGE_EXPIRY:-168}
+depinpoolsize=${NEURAI_DEPIN_MAX_POOL_SIZE:-100}
+depinmsgmaxusers=${NEURAI_DEPIN_MAX_RECIPIENTS:-20}
+EOF
+  if [ -n "${NEURAI_DEPIN_WALLET:-}" ]; then
+    echo "depinwallet=${NEURAI_DEPIN_WALLET}" >> "$DATA_DIR/neurai.conf"
+  fi
+fi
+
 cat >> "$DATA_DIR/neurai.conf" <<EOF
 
 # Wallet — disabled by default, set NEURAI_DISABLE_WALLET=0 to enable

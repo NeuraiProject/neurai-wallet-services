@@ -2,8 +2,13 @@ const staticFiles = require("./static");
 
 const JSON_LIMIT = 2 * 1024 * 1024;
 
-const POST_ROUTES = { "/rpc": "handleRpc", "/depin": "handleDePin", "/depin/challenge": "handleDePinChallenge" };
-const API_PATHS = ["/whitelist", "/getCache", "/settings", ...Object.keys(POST_ROUTES)];
+const POST_ROUTES = { "/rpc": "handleRpc" };
+// DePIN protocol 1 endpoints. The service no longer requests challenges or
+// relays signed calls on a client's behalf: with protocol 2 the client does
+// that itself through POST /rpc. Kept for one release as 410 Gone.
+const GONE_ROUTES = ["/depin", "/depin/challenge"];
+const GONE_BODY = { error: "Gone", description: "DePIN protocol 2: call POST /rpc with the depin* methods. The client requests challenges, signs and encrypts itself; this service no longer does it on its behalf." };
+const API_PATHS = ["/whitelist", "/getCache", "/settings", ...Object.keys(POST_ROUTES), ...GONE_ROUTES];
 
 function sendJson(res, status, body, headers = {}) {
   if (res.writableEnded || res.destroyed) return;
@@ -46,7 +51,8 @@ function createHandler(deps) {
     if (req.method === "GET" && pathname === "/getCache") return sendJson(res, 200, deps.getCache());
     if (req.method === "GET" && pathname === "/settings") return sendJson(res, 200, deps.settings);
     // Body text kept verbatim from the retired proxy's GET /rpc response.
-    if (req.method === "GET" && POST_ROUTES[pathname]) return sendJson(res, 405, { description: "Please use the HTTP POST method to proceed. For more details, refer to our documentation." }, { allow: "POST" });
+    if (req.method === "GET" && (POST_ROUTES[pathname] || GONE_ROUTES.includes(pathname))) return sendJson(res, 405, { description: "Please use the HTTP POST method to proceed. For more details, refer to our documentation." }, { allow: "POST" });
+    if (req.method === "POST" && GONE_ROUTES.includes(pathname)) { req.resume(); return sendJson(res, 410, GONE_BODY); }
     const postRoute = req.method === "POST" ? POST_ROUTES[pathname] : undefined;
     if (postRoute) {
       try {

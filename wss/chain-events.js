@@ -24,6 +24,7 @@ const { callRPC } = require("./rpc");
 const chainState = require("./chain-state");
 const subscriptions = require("./subscriptions");
 const notifications = require("./notifications");
+const { describeForLog } = require("../rpcError");
 
 let methodsRef = null;
 let prevoutCache = null;
@@ -83,7 +84,7 @@ async function warmup() {
     );
     return true;
   } catch (e) {
-    console.log("[chain-events] warmup failed:", e && e.message ? e.message : e);
+    console.log("[chain-events] warmup failed:", describeForLog(e));
     return false;
   }
 }
@@ -181,7 +182,7 @@ async function onBlock(blockHash) {
   try {
     header = await callRPC("getblockheader", [blockHash, true]);
   } catch (e) {
-    console.log("[chain-events] getblockheader failed:", e && e.message ? e.message : e);
+    console.log("[chain-events] getblockheader failed:", describeForLog(e));
     return;
   }
   if (!header || typeof header.height !== "number") return;

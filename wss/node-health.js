@@ -15,6 +15,7 @@
 
 const { callRPC } = require("./rpc");
 const notifications = require("./notifications");
+const { describeForLog } = require("../rpcError");
 
 let state = {
   // Pessimistic default: until the first successful poll we treat the node as
@@ -57,6 +58,9 @@ async function poll() {
   try {
     info = await callRPC("getblockchaininfo", []);
   } catch (e) {
+    if (state.last_check_ok || state.last_check_ts === null) {
+      console.log("[node-health] getblockchaininfo failed:", describeForLog(e));
+    }
     state.last_check_ts = Date.now();
     state.last_check_ok = false;
     return;

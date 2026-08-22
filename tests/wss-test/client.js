@@ -462,22 +462,32 @@ async function testGetStateValid() {
 }
 
 async function testDepinChallengeRequiresAddress() {
+  // Protocol 2: depin.challenge takes the positional depinchallenge contract
+  // (token, address, timestamp, signature, type?). The protocol 1 shape
+  // {address} is refused before anything reaches the node.
   await withSession(async (ws) => {
-    const r = await rpc(ws, { id: 900, method: "depin.challenge", params: {} });
-    if (r.error && r.error.code === 1003) ok("depin.challenge rejects missing address (1003)");
-    else fail("depin.challenge missing address", JSON.stringify(r));
+    const r = await rpc(ws, { id: 900, method: "depin.challenge", params: { address: "Nxxx" } });
+    if (r.error && r.error.code === 1003 && /protocol 2/.test(r.error.message))
+      ok("depin.challenge rejects the protocol 1 {address} shape (1003)");
+    else fail("depin.challenge legacy shape", JSON.stringify(r));
   });
 }
 
 async function testDepinSignedRejectsMissingSignature() {
+  // The proxy no longer signs or relays on a client's behalf: the protocol 1
+  // signed methods are gone (1004 with a pointer), and the legacy
+  // {address, signature, args} shape is refused on the protocol 2 methods.
   await withSession(async (ws) => {
-    const r = await rpc(ws, {
-      id: 901,
-      method: "depin.send_msg",
-      params: { address: "Nxxx", args: [] },
+    const gone = await rpc(ws, { id: 901, method: "depin.send_msg", params: [] });
+    if (gone.error && gone.error.code === 1004) ok("depin.send_msg was retired (1004)");
+    else fail("depin.send_msg retired", JSON.stringify(gone));
+    const legacy = await rpc(ws, {
+      id: 902,
+      method: "depin.receive_msg",
+      params: { address: "Nxxx", signature: "sig", args: [] },
     });
-    if (r.error && r.error.code === 1003) ok("depin.send_msg rejects missing signature (1003)");
-    else fail("depin signed missing signature", JSON.stringify(r));
+    if (legacy.error && legacy.error.code === 1003) ok("depin.receive_msg rejects the protocol 1 signed shape (1003)");
+    else fail("depin.receive_msg legacy shape", JSON.stringify(legacy));
   });
 }
 
@@ -486,9 +496,9 @@ async function testDepinReadOnlyRoutes() {
   // verify the method is registered and routes to callRPC, not METHOD_NOT_FOUND.
   await withSession(async (ws) => {
     const r = await rpc(ws, {
-      id: 902,
+      id: 903,
       method: "depin.pool_stats",
-      params: {},
+      params: [],
     });
     if (r.error && r.error.code === 1005) ok("depin.pool_stats routes (RPC error normalized)");
     else if (r.result !== undefined) ok("depin.pool_stats returned a result");
@@ -499,7 +509,7 @@ async function testDepinReadOnlyRoutes() {
 async function testDepinUnknownMethod() {
   await withSession(async (ws) => {
     const r = await rpc(ws, {
-      id: 903,
+      id: 904,
       method: "depin.totally_made_up",
       params: {},
     });

@@ -1,10 +1,9 @@
 const http = require("http");
 const { create } = require("../../http");
 
-const nodeDeps = {
-  getNodes: () => [], getDePinNodes: () => [], getDePinNode: () => ({ depinUrl: "http://localhost:19002" }),
-};
-const depinService = { getCacheStats: () => ({}), executeDePinRPC: jest.fn() };
+const { createDepinLimiter } = require("../../depinRateLimit");
+
+const nodeDeps = { getNodes: () => [] };
 
 function request(server, method, path, body) {
   return new Promise((resolve, reject) => {
@@ -21,7 +20,7 @@ function request(server, method, path, body) {
 test("HTTP routes, cache invalidation and method guard", async () => {
   let calls = 0;
   const service = create({ enabled: true, max_requests_per_second: 100, concurrency: 1, max_queue_size: 2 }, null, {
-    nodeDeps, depinService, rpc: async () => { calls++; return 123; },
+    nodeDeps, rpc: async () => { calls++; return 123; },
   });
   const server = http.createServer(service.handleRequest);
   await new Promise((resolve) => server.listen(0, resolve));
@@ -43,7 +42,13 @@ test("HTTP routes, cache invalidation and method guard", async () => {
   // the service to sign a supplied private key is intentionally not exposed.
   expect((await request(server, "POST", "/rpc", { method: "sendrawtransaction", params: [] })).status).toBe(200);
   expect((await request(server, "POST", "/rpc", { method: "signmessagewithprivkey", params: [] })).status).toBe(404);
-  expect((await request(server, "POST", "/depin", {})).body).toEqual({ error: "Missing or invalid address", description: "Request must include a valid 'address' field" });
+  // Protocol 1 endpoints answer 410 for one release, pointing at POST /rpc.
+  for (const path of ["/depin", "/depin/challenge"]) {
+    const gone = await request(server, "POST", path, { address: "Nabc" });
+    expect(gone.status).toBe(410);
+    expect(gone.body.error).toBe("Gone");
+    expect(gone.body.description).toMatch(/POST \/rpc/);
+  }
   expect((await request(server, "GET", "/%2e%2e/package.json")).status).toBe(404);
   expect((await request(server, "GET", "/")).status).toBe(200);
   await new Promise((resolve) => server.close(resolve));
@@ -51,7 +56,7 @@ test("HTTP routes, cache invalidation and method guard", async () => {
 
 test("RPC errors have the documented compatibility format", async () => {
   const service = create({ enabled: true }, null, {
-    nodeDeps, depinService, rpc: async () => { const error = new Error("upstream failed"); error.code = -42; throw error; },
+    nodeDeps, rpc: async () => { const error = new Error("upstream failed"); error.code = -42; throw error; },
   });
   const server = http.createServer(service.handleRequest);
   await new Promise((resolve) => server.listen(0, resolve));
@@ -61,38 +66,104 @@ test("RPC errors have the documented compatibility format", async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-test("POST /depin/challenge issues the challenge the client has to sign", async () => {
-  const expiresAt = 1750000000000;
-  const service = create({ enabled: true }, null, {
-    nodeDeps, rpc: async () => 1,
-    depinService: { ...depinService, requestChallenge: async (url, address) => ({ challenge: `c-${address}`, timeout: 60, expiresAt }) },
-  });
+test("node JSON-RPC errors keep their code whatever HTTP status the node used", async () => {
+  // The node answers JSON-RPC errors with HTTP 500 (most codes) or 400 (-32600);
+  // the library rejects with {statusText, status, error: {code, message}}.
+  const nodeError = { statusText: "Bad Request", status: 400, description: undefined, error: { code: -32600, message: "Request authentication failed: stale timestamp" } };
+  const service = create({ enabled: true }, null, { nodeDeps, rpc: async () => { throw nodeError; } });
   const server = http.createServer(service.handleRequest);
   await new Promise((resolve) => server.listen(0, resolve));
-  const issued = await request(server, "POST", "/depin/challenge", { address: "Nabc" });
-  expect(issued.status).toBe(200);
-  expect(issued.body).toEqual({ result: { challenge: "c-Nabc", timeout: 60, expires_at: new Date(expiresAt).toISOString() } });
-  const missing = await request(server, "POST", "/depin/challenge", {});
-  expect(missing.status).toBe(400);
-  expect(missing.body).toEqual({ error: "Missing or invalid address", description: "Request must include a valid 'address' field" });
+  const response = await request(server, "POST", "/rpc", { method: "getblockcount", params: [] });
+  expect(response.status).toBe(500);
+  expect(response.body).toEqual({ error: { message: "Request authentication failed: stale timestamp", code: -32600 } });
   await new Promise((resolve) => server.close(resolve));
 });
 
-test("POST /depin/challenge reports an unreachable DePIN node", async () => {
-  const service = create({ enabled: true }, null, {
-    nodeDeps, rpc: async () => 1,
-    depinService: { ...depinService, requestChallenge: async () => { throw new Error("Failed to request challenge: 502 Bad Gateway"); } },
-  });
+test("upstream failures are 502 with a neutral message, never the upstream body", async () => {
+  const cases = [
+    { originalError: new Error("ECONNREFUSED"), type: "ServerUnreachable", error: "Could not communicate with Neurai core node", description: "Are you sure that the URL is correct?" },
+    { statusText: "Unauthorized", status: 401, description: null, error: null },
+  ];
+  for (const failure of cases) {
+    const service = create({ enabled: true }, null, { nodeDeps, rpc: async () => { throw failure; } });
+    const server = http.createServer(service.handleRequest);
+    await new Promise((resolve) => server.listen(0, resolve));
+    const response = await request(server, "POST", "/rpc", { method: "getblockcount", params: [] });
+    expect(response.status).toBe(502);
+    expect(response.body).toEqual({ error: { message: "upstream RPC unavailable", code: null } });
+    expect(JSON.stringify(response.body)).not.toMatch(/Unauthorized|URL is correct/);
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("an `undefined` RPC result (0.4.7 on HTTP-200 errors) answers {result: null} instead of hanging", async () => {
+  const service = create({ enabled: true }, null, { nodeDeps, rpc: async () => undefined });
   const server = http.createServer(service.handleRequest);
   await new Promise((resolve) => server.listen(0, resolve));
-  const failed = await request(server, "POST", "/depin/challenge", { address: "Nabc" });
-  expect(failed.status).toBe(500);
-  expect(failed.body).toEqual({ error: "Failed to request challenge: 502 Bad Gateway" });
+  const response = await request(server, "POST", "/rpc", { method: "getblockcount", params: [] });
+  expect(response.status).toBe(200);
+  expect(response.body).toEqual({ result: null });
+  await new Promise((resolve) => server.close(resolve));
+});
+
+test("depin* methods share one per-IP quota: 429 + Retry-After, then a ban", async () => {
+  const limiter = createDepinLimiter({ perMinute: 2, banMinutes: 1 });
+  const service = create({ enabled: true }, null, { nodeDeps, rpc: async () => ({ body: "00", poolsig: "sig" }), depinLimiter: limiter });
+  const server = http.createServer(service.handleRequest);
+  await new Promise((resolve) => server.listen(0, resolve));
+  const call = (method) => request(server, "POST", "/rpc", { method, params: [] });
+  expect((await call("depingetmsginfo")).status).toBe(200);
+  expect((await call("depinpoolstats")).status).toBe(200);
+  const refused = await call("depinchallenge");
+  expect(refused.status).toBe(429);
+  expect(refused.headers["retry-after"]).toBe("60");
+  expect(refused.body.error).toBe("Too many requests");
+  expect(refused.body.description).toMatch(/blocked for 60 seconds/);
+  // Banned: even a cheap pool query is refused, but chain queries and
+  // non-DePIN methods are untouched.
+  expect((await call("depingetmsginfo")).status).toBe(429);
+  expect((await call("checkdepinvalidity")).status).toBe(200);
+  expect((await call("getblockcount")).status).toBe(200);
+  expect(service.getStats().depin_rate_limit).toEqual({ per_minute: 2, ban_minutes: 1, tracked: 0, banned: 1 });
+  await new Promise((resolve) => server.close(resolve));
+});
+
+test("X-Forwarded-For only identifies the client when the peer is a trusted proxy", async () => {
+  const limiter = createDepinLimiter({ perMinute: 1, banMinutes: 1 });
+  // The test client connects from loopback, which is trusted by default, so a
+  // forwarded header is honoured: two different forwarded clients get two
+  // buckets. With an empty trusted set the same header is ignored and both
+  // requests land in the loopback bucket.
+  for (const [trusted, secondStatus] of [[undefined, 200], [new Set(), 429]]) {
+    const service = create({ enabled: true }, null, { nodeDeps, rpc: async () => 1, depinLimiter: createDepinLimiter({ perMinute: 1, banMinutes: 1 }), trustedProxies: trusted });
+    const server = http.createServer(service.handleRequest);
+    await new Promise((resolve) => server.listen(0, resolve));
+    const forwarded = (ip) => new Promise((resolve, reject) => {
+      const req = http.request({ port: server.address().port, method: "POST", path: "/rpc", headers: { "content-type": "application/json", "x-forwarded-for": ip } }, (res) => { res.resume(); res.on("end", () => resolve(res.statusCode)); });
+      req.on("error", reject); req.end(JSON.stringify({ method: "depingetmsginfo", params: [] }));
+    });
+    expect(await forwarded("203.0.113.1")).toBe(200);
+    expect(await forwarded("203.0.113.2")).toBe(secondStatus);
+    await new Promise((resolve) => server.close(resolve));
+  }
+  expect(limiter.stats().tracked).toBe(0);
+});
+
+test("wallet-only DePIN helpers are refused before any RPC connection", async () => {
+  let calls = 0;
+  const service = create({ enabled: true }, null, { nodeDeps, rpc: async () => { calls++; return 1; } });
+  const server = http.createServer(service.handleRequest);
+  await new Promise((resolve) => server.listen(0, resolve));
+  for (const method of ["depinsignrequest", "depinsignchallenge", "depindecrypt", "depinsendmsg", "depingetmsg", "depinpoolpkey", "depingetpoolcontent", "listpqaddresses", "getibdstatus"]) {
+    const response = await request(server, "POST", "/rpc", { method, params: [] });
+    expect([method, response.status]).toEqual([method, 404]);
+  }
+  expect(calls).toBe(0);
   await new Promise((resolve) => server.close(resolve));
 });
 
 test("per-IP rate limit must not exceed the global limit", () => {
   expect(() => create({ enabled: true, max_requests_per_second: 10, max_requests_per_second_per_ip: 11 }, null, {
-    nodeDeps, depinService, rpc: async () => 1,
+    nodeDeps, rpc: async () => 1,
   })).toThrow("max_requests_per_second_per_ip cannot exceed");
 });

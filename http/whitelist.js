@@ -151,27 +151,42 @@ const whitelist = [
   "validateaddress",
   "verifymessage",
 
-  //== Depin asset ==
+  //== Depin asset (chain queries; cached per block) ==
   "getpubkey",
   "checkdepinvalidity",
   //"freezedepin",
+  "depingetancestorrecipients",
   "listdepinholders",
   "listdepinaddresses",
-  "listpqaddresses",
+  //"listpqaddresses",   // lists the node wallet's PQ addresses
   //"selfrevokedepin",
   //"unfreezedepin",
 
-  //== Depin messaging ==
-  //"depinclearmsg",
-  "depinreceivemsg",
-  "depingetmsg",
-  "depingetmsginfo",
-  "depingetpoolcontent",
+  //== Depin messaging (protocol 2, served on the node's RPC port) ==
+  // The client signs challenge requests and challenges, decrypts bound
+  // replies, verifies poolsig against its pinned pool key and wraps
+  // depinsubmitmsg in an ECIES envelope for that key. Nothing here needs the
+  // node's wallet, and nothing derived from the pool is cached.
+  "depinchallenge",
+  "depinclearmsg",     // owner-level, challenge-authenticated
+  "depingetmsginfo",   // publishes the pool key (clients pin it on first use)
+  "depinlistsections", // 0 args: public section names; 4 args: address mode
   "depinmcpstatus",
   "depinpoolstats",
-  "depinpoolpkey",
-  "depinsendmsg",
-  "depinsubmitmsg",
+  "depinreceivemsg",
+  "depinsubmitmsg",    // write, but non-custodial: {sender, encrypted} only
+  // depingetpoolcontent no longer exists in the node.
+
+  //== Depin — the node's OWN wallet; never exposed (spec §8.5) ==
+  //"depingetmsg",        // decrypts with the node's wallet keys
+  //"depinsendmsg",       // fromaddress must be a wallet address (signs+encrypts)
+  //"depinsignrequest",   // signs a challenge request with the node's wallet keys
+  //"depinsignchallenge", // signs a challenge with the node's wallet keys
+  //"depindecrypt",       // opens an encrypted reply with the node's wallet keys
+  //"depinpoolpkey",      // operator bootstrap; depingetmsginfo publishes the key
+
+  //== Diagnostics not exposed ==
+  //"getibdstatus",       // header-sync timings; absent from the v1.0.6 mainnet node
 
   //== Wallet ==
   /*

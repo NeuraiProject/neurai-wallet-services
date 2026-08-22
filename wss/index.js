@@ -6,6 +6,7 @@ const chainState = require("./chain-state");
 const nodeHealth = require("./node-health");
 const zmqWatcher = require("./zmq-watcher");
 const statsServer = require("./stats-server");
+const { getSharedLimiter } = require("../depinRateLimit");
 
 const VALID_AUTH_TRANSPORTS = ["sec-websocket-protocol", "query", "both"];
 
@@ -77,6 +78,7 @@ function fillDefaults(cfg) {
 }
 
 let httpStats = null;
+let globalConfigRef = null;
 
 function start(rawConfig, globalConfig, httpService) {
   if (!rawConfig || rawConfig.enabled !== true) {
@@ -94,6 +96,7 @@ function start(rawConfig, globalConfig, httpService) {
 
   const ctx = { config: cfg, globalConfig: globalConfig || null };
   httpStats = httpService ? httpService.getStats : null;
+  globalConfigRef = globalConfig || null;
   return server.start(cfg, ctx, httpService);
 }
 
@@ -106,6 +109,7 @@ function getStats() {
     node: nodeHealth.getStatus(),
     zmq: zmqWatcher.getStatus(),
     http: httpStats ? httpStats() : null,
+    depin_rate_limit: getSharedLimiter(globalConfigRef).stats(),
   };
 }
 

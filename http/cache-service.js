@@ -11,8 +11,12 @@ function create() {
     "decodescript", "checkaddressrestriction", "checkaddresstag", "checkglobalrestriction",
     "getverifierstring", "isvalidverifierstring", "listaddressesfortag", "listaddressrestrictions",
     "listglobalrestrictions", "listtagsforaddress", "validateaddress", "verifymessage",
-    "checkdepinvalidity", "listdepinholders", "listdepinaddresses", "depingetmsg",
-    "depingetmsginfo", "depingetpoolcontent", "depinmcpstatus", "depinpoolstats", "depinpoolpkey",
+    // DePIN chain queries follow blocks like everything else above. Nothing
+    // that comes from the message pool is cached: its state is off-chain and
+    // every reply is signed with the pool key that is live right now
+    // (depingetancestorrecipients included — its recipients are chain data,
+    // but the reply carries that poolsig).
+    "checkdepinvalidity", "listdepinholders", "listdepinaddresses",
   ]);
   const key = (method, params) => JSON.stringify({ method, params });
   return {

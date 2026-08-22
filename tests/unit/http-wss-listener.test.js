@@ -16,8 +16,7 @@ function httpGet(server) {
 test("HTTP and WebSocket upgrades coexist on one listener", async () => {
   const service = create({ enabled: true, environment: "test", max_requests_per_second: 100 }, null, {
     rpc: async () => 1,
-    nodeDeps: { getNodes: () => [], getDePinNodes: () => [], getDePinNode: () => ({ depinUrl: "http://localhost" }) },
-    depinService: { getCacheStats: () => ({}), executeDePinRPC: jest.fn() },
+    nodeDeps: { getNodes: () => [] },
   });
   const server = http.createServer();
   attachHttpService(server, service);

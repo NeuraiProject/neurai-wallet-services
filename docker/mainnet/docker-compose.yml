@@ -69,9 +69,18 @@ services:
       NEURAI_NODE_URL: "http://neuraid:19001"
       NEURAI_RPC_USER: "neurai"
       NEURAI_RPC_PASSWORD: "changeme"
-      # Enable to expose DePIN methods (depin.*) on WSS. Requires the Neurai node
-      # to be running with DePIN messaging service on depin_url.
-      NEURAI_DEPIN_ENABLED: "false"
+      # DePIN protocol 2 is relayed through NEURAI_NODE_URL when the node
+      # serves it; the official v1.0.6 image does not, so depin* calls are
+      # answered by the node with an error. Quota for depin* per IP (HTTP+WSS).
+      PROXY_DEPIN_RATE_LIMIT: "60"
+      PROXY_DEPIN_BAN_MINUTES: "10"
+      # Reverse proxies whose X-Forwarded-For is believed (HTTP and WSS). When
+      # using Hestia/nginx on the host, add this Compose network's bridge
+      # gateway (inspect it with `docker network inspect neurai_net_mainnet`).
+      # The reverse proxy must OVERWRITE the header ($remote_addr), never
+      # append to it ($proxy_add_x_forwarded_for).
+      PROXY_TRUSTED_PROXIES: "127.0.0.1,::1,::ffff:127.0.0.1"
+      # PROXY_TRUSTED_PROXIES: "172.19.0.1,127.0.0.1,::1"
       PROXY_WSS_ENABLED: "true"
       PROXY_WSS_PORT: "19020"
       PROXY_WSS_PATH: "/push"
@@ -83,9 +92,6 @@ services:
       PROXY_HTTP_ENVIRONMENT: "Neurai Mainnet"
       PROXY_HTTP_ENDPOINT: "https://rpc-main.neurai.org/rpc"
       PROXY_HTTP_MAX_RPS_PER_IP: "20"
-      # When using Hestia/nginx on the host, add this Compose network's bridge
-      # gateway (inspect it with `docker network inspect neurai_net_mainnet`).
-      # PROXY_HTTP_TRUSTED_PROXIES: "172.19.0.1,127.0.0.1,::1"
       # Default deployment: behind a host reverse proxy that terminates TLS
       # (HestiaCP / nginx / Caddy / etc). The proxy listens on plain ws://
       # internally and the reverse proxy on the host adds TLS + LE renewal.
@@ -105,7 +111,7 @@ services:
       #       proxy_read_timeout 3600s;
       #   }
       #
-      #   # Public HTTP RPC (`/rpc`, `/depin`, UI and metadata). Do not set
+      #   # Public HTTP RPC (`/rpc`, UI and metadata). Do not set
       #   # Upgrade/Connection here: these are ordinary HTTP requests.
       #   location / {
       #       proxy_pass http://127.0.0.1:19010;

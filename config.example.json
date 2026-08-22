@@ -1,4 +1,11 @@
 {
+  "trusted_proxy_ips": ["127.0.0.1", "::1", "::ffff:127.0.0.1"],
+
+  "depin": {
+    "rate_limit": 60,
+    "ban_minutes": 10
+  },
+
   "wss": {
     "enabled": false,
     "host": "0.0.0.0",
@@ -41,32 +48,20 @@
     "max_requests_per_second_per_ip": 20,
     "max_queue_size": 500,
     "rate_limiter_ttl_ms": 300000,
-    "max_rate_limiter_ips": 10000,
-    "trusted_proxy_ips": ["127.0.0.1", "::1", "::ffff:127.0.0.1"]
+    "max_rate_limiter_ips": 10000
   },
   "nodes": [
     {
-      "name": "Local Neurai Node with DePIN",
+      "name": "Local Neurai testnet node (DePIN protocol 2 on the RPC port)",
       "username": "your_rpc_username",
       "password": "your_rpc_password",
-      "neurai_url": "http://localhost:19001",
-      "depin_enabled": true,
-      "depin_url": "http://localhost:19002"
+      "neurai_url": "http://localhost:19101"
     },
     {
-      "name": "Remote Node without DePIN",
+      "name": "Remote node",
       "username": "remote_user",
       "password": "remote_pass",
-      "neurai_url": "http://remote-server.com:19001",
-      "depin_enabled": false
-    },
-    {
-      "name": "Node with custom DePIN port",
-      "username": "user",
-      "password": "pass",
-      "neurai_url": "http://localhost:19001",
-      "depin_enabled": true,
-      "depin_url": "http://localhost:29002"
+      "neurai_url": "http://remote-server.com:19001"
     }
   ]
 }

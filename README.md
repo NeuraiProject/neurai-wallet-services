@@ -529,6 +529,11 @@ names, volumes and Docker networks so they can run side-by-side on the
 same host. Test-only assets live under `tests/`.
 
 ```bash
+# Deployment-specific values live in a .env next to each compose file
+# (ignored by git, so it survives updates to the compose file)
+cp docker/testnet/.env.example docker/testnet/.env   # then edit it
+cp docker/mainnet/.env.example docker/mainnet/.env
+
 # Testnet (build and start)
 docker compose -f docker/testnet/docker-compose.yml up -d --build
 
@@ -539,14 +544,27 @@ docker compose -f docker/mainnet/docker-compose.yml up -d --build
 docker compose -f docker/testnet/docker-compose.yml -f tests/docker-compose.yml --profile test run --rm wss-test
 ```
 
-Defaults:
+`.env` holds what changes per deployment or is secret: RPC credentials and
+port (one value feeds both the node and the proxy's upstream URL), the node
+branch/image tag, the WSS auth token, the published port and bind interface,
+the public HTTP endpoint, `PROXY_TRUSTED_PROXIES`, the `depin*` quota and, on
+testnet, the DePIN pool token and wallet. Everything structural (indexes, ZMQ
+wiring, paths, healthchecks) stays in the compose file. Every variable has the
+same default in `.env.example` and in the compose file, so a stack starts
+without a `.env`; the template is what gets updated when a variable appears.
+On mainnet the RPC credentials in `.env` configure only the proxy and must
+match `docker/mainnet/neurai.conf`, which the official image reads.
+The acceptance suite picks `PROXY_WSS_PORT` and `PROXY_WSS_AUTH_TOKEN` from
+the same testnet `.env`.
+
+Defaults (all overridable in `.env`):
 
 - Testnet WSS push listens on `127.0.0.1:19020/push`, mainnet on
   `127.0.0.1:19010/push`, both plain WS (TLS off). A host reverse proxy
   is expected to terminate TLS.
 - Testnet auth token: `testnet-wss-token-do-not-use-in-production`.
   Mainnet ships with a `CHANGE-ME-mainnet-wss-token` placeholder —
-  override via `PROXY_WSS_AUTH_TOKEN` before any internet-facing run.
+  set `PROXY_WSS_AUTH_TOKEN` in `.env` before any internet-facing run.
 - Testnet builds the node's `DePIN-Test` branch with DePIN protocol 2 enabled
   (`NEURAI_DEPIN_ENABLED=1`, `NEURAI_DEPIN_TOKEN`, wallet on); the proxy
   relays `depin*` through the RPC port with `PROXY_DEPIN_RATE_LIMIT=60` /

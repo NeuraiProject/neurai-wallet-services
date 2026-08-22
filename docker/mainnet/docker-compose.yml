@@ -1,5 +1,11 @@
 name: neurai-wallet-services-mainnet
 
+# Deployment-specific values (secrets, ports, public URL, trusted proxies,
+# quotas, token) come from a `.env` file next to this compose file — copy
+# `.env.example` to `.env` and edit it there; it is ignored by git, so it
+# survives updates to this file. Every `${VAR:-default}` below has the same
+# default in .env.example, so the stack also starts without a .env.
+
 services:
   neuraid:
     # Official prebuilt mainnet node image from Docker Hub:
@@ -7,7 +13,7 @@ services:
     # No local build needed — pull the pinned tag instead of compiling from
     # source. The official image is mainnet-only; testnet keeps building from
     # ../node because the official image does not support a testnet switch.
-    image: neuraiproject/neurai-node:v1.0.6
+    image: "neuraiproject/neurai-node:${NODE_IMAGE_TAG:-v1.0.6}"
     restart: unless-stopped
     # The official entrypoint lets neuraid flush its databases on shutdown.
     # Avoid Docker's default 10-second timeout, which can cause a long reindex
@@ -66,32 +72,33 @@ services:
 
     environment:
       NEURAI_NODE_NAME: "neuraid-mainnet"
-      NEURAI_NODE_URL: "http://neuraid:19001"
-      NEURAI_RPC_USER: "neurai"
-      NEURAI_RPC_PASSWORD: "changeme"
+      # Must match rpcuser / rpcpassword / rpcport in ./neurai.conf: the
+      # official image reads that file, not these variables.
+      NEURAI_NODE_URL: "http://neuraid:${NODE_RPC_PORT:-19001}"
+      NEURAI_RPC_USER: "${NODE_RPC_USER:-neurai}"
+      NEURAI_RPC_PASSWORD: "${NODE_RPC_PASSWORD:-changeme}"
       # DePIN protocol 2 is relayed through NEURAI_NODE_URL when the node
       # serves it; the official v1.0.6 image does not, so depin* calls are
       # answered by the node with an error. Quota for depin* per IP (HTTP+WSS).
-      PROXY_DEPIN_RATE_LIMIT: "60"
-      PROXY_DEPIN_BAN_MINUTES: "10"
+      PROXY_DEPIN_RATE_LIMIT: "${PROXY_DEPIN_RATE_LIMIT:-60}"
+      PROXY_DEPIN_BAN_MINUTES: "${PROXY_DEPIN_BAN_MINUTES:-10}"
       # Reverse proxies whose X-Forwarded-For is believed (HTTP and WSS). When
       # using Hestia/nginx on the host, add this Compose network's bridge
       # gateway (inspect it with `docker network inspect neurai_net_mainnet`).
       # The reverse proxy must OVERWRITE the header ($remote_addr), never
       # append to it ($proxy_add_x_forwarded_for).
-      PROXY_TRUSTED_PROXIES: "127.0.0.1,::1,::ffff:127.0.0.1"
-      # PROXY_TRUSTED_PROXIES: "172.19.0.1,127.0.0.1,::1"
+      PROXY_TRUSTED_PROXIES: "${PROXY_TRUSTED_PROXIES:-127.0.0.1,::1,::ffff:127.0.0.1}"
       PROXY_WSS_ENABLED: "true"
-      PROXY_WSS_PORT: "19020"
+      PROXY_WSS_PORT: "${PROXY_WSS_PORT:-19010}"
       PROXY_WSS_PATH: "/push"
       PROXY_WSS_AUTH_TRANSPORT: "sec-websocket-protocol"
-      # CHANGE-ME before any internet-facing deployment. Mainnet must never run
-      # with a default or shared token — generate a long random secret per host.
-      PROXY_WSS_AUTH_TOKEN: "CHANGE-ME-mainnet-wss-token"
+      # CHANGE IT in .env before any internet-facing deployment. Mainnet must
+      # never run with a default or shared token — a long random secret per host.
+      PROXY_WSS_AUTH_TOKEN: "${PROXY_WSS_AUTH_TOKEN:-CHANGE-ME-mainnet-wss-token}"
       PROXY_HTTP_ENABLED: "true"
       PROXY_HTTP_ENVIRONMENT: "Neurai Mainnet"
-      PROXY_HTTP_ENDPOINT: "https://rpc-main.neurai.org/rpc"
-      PROXY_HTTP_MAX_RPS_PER_IP: "20"
+      PROXY_HTTP_ENDPOINT: "${PROXY_HTTP_ENDPOINT:-https://rpc-main.neurai.org/rpc}"
+      PROXY_HTTP_MAX_RPS_PER_IP: "${PROXY_HTTP_MAX_RPS_PER_IP:-20}"
       # Default deployment: behind a host reverse proxy that terminates TLS
       # (HestiaCP / nginx / Caddy / etc). The proxy listens on plain ws://
       # internally and the reverse proxy on the host adds TLS + LE renewal.
@@ -102,7 +109,7 @@ services:
       # then run `v-restart-web`:
       #
       #   location /push {
-      #       proxy_pass http://127.0.0.1:19010/push;
+      #       proxy_pass http://127.0.0.1:${PROXY_WSS_PORT}/push;   # 19010 by default
       #       proxy_http_version 1.1;
       #       proxy_set_header Upgrade $http_upgrade;
       #       proxy_set_header Connection "upgrade";
@@ -114,7 +121,7 @@ services:
       #   # Public HTTP RPC (`/rpc`, UI and metadata). Do not set
       #   # Upgrade/Connection here: these are ordinary HTTP requests.
       #   location / {
-      #       proxy_pass http://127.0.0.1:19010;
+      #       proxy_pass http://127.0.0.1:${PROXY_WSS_PORT};
       #       proxy_set_header Host $host;
       #       proxy_set_header X-Forwarded-For $remote_addr;
       #       proxy_set_header X-Forwarded-Proto $scheme;
@@ -129,17 +136,17 @@ services:
       # Optional local stats endpoint for ops/monitoring. When enabled, exposes
       # GET http://127.0.0.1:<port>/stats with sessions/subs/tip/zmq/queue.
       # Always loopback-only (unauthenticated); never publish the port.
-      PROXY_WSS_STATS_ENABLED: "false"
+      PROXY_WSS_STATS_ENABLED: "${PROXY_WSS_STATS_ENABLED:-false}"
       PROXY_WSS_STATS_PORT: "19021"
       PROXY_ZMQ_ENDPOINT: "tcp://neuraid:28332"
 
     ports:
-      # WSS push bound to localhost only. Mainnet uses 19010 on the host so it
-      # can coexist with the testnet stack (which uses 19020). The host reverse
-      # proxy (HestiaCP nginx) reaches it via 127.0.0.1:19010. Never publish
-      # 19010 to the internet directly while TLS_ENABLED=false — anyone could
+      # WSS + HTTP bound to PROXY_BIND (loopback by default). Mainnet uses
+      # 19010 so it can coexist with the testnet stack (19020) on one host; the
+      # host reverse proxy (HestiaCP nginx) reaches it via 127.0.0.1:PROXY_WSS_PORT.
+      # Never publish it to the internet while TLS_ENABLED=false — anyone could
       # forge X-Forwarded-For.
-      - "127.0.0.1:19010:19020"
+      - "${PROXY_BIND:-127.0.0.1}:${PROXY_WSS_PORT:-19010}:${PROXY_WSS_PORT:-19010}"
 
     networks:
       - neurai_net_mainnet

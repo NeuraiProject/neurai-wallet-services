@@ -1,12 +1,18 @@
 name: neurai-wallet-services-testnet
 
+# Deployment-specific values (secrets, ports, public URL, trusted proxies,
+# quotas, token) come from a `.env` file next to this compose file — copy
+# `.env.example` to `.env` and edit it there; it is ignored by git, so it
+# survives updates to this file. Every `${VAR:-default}` below has the same
+# default in .env.example, so the stack also starts without a .env.
+
 services:
   neuraid:
     build:
       context: ../node
       dockerfile: Dockerfile
       args:
-        BRANCH: DePIN-Test
+        BRANCH: "${NODE_BRANCH:-DePIN-Test}"
     restart: unless-stopped
 
     logging:
@@ -23,11 +29,12 @@ services:
       NEURAI_REST: "1"
 
       # ── RPC ──────────────────────────────────────────────────────────────
-      NEURAI_RPC_USER: "neurai"
-      NEURAI_RPC_PASSWORD: "changeme"
+      # Same .env values feed the proxy's NEURAI_NODE_URL below.
+      NEURAI_RPC_USER: "${NODE_RPC_USER:-neurai}"
+      NEURAI_RPC_PASSWORD: "${NODE_RPC_PASSWORD:-changeme}"
       # NEURAI_RPC_ALLOW_IP: restrict in production (e.g. 127.0.0.1/32)
       NEURAI_RPC_ALLOW_IP: "0.0.0.0/0"
-      NEURAI_RPC_PORT: "19101"
+      NEURAI_RPC_PORT: "${NODE_RPC_PORT:-19101}"
       NEURAI_RPC_TIMEOUT: "240"
       NEURAI_RPC_WORKQUEUE: "64"
       NEURAI_RPC_THREADS: "8"
@@ -43,14 +50,15 @@ services:
       # rpc-proxy relays the depin* RPCs through NEURAI_NODE_URL. The
       # entrypoint refuses to start without a token or with the wallet off.
       NEURAI_DEPIN_ENABLED: "1"
-      NEURAI_DEPIN_TOKEN: "&DEPINTESTING"
+      NEURAI_DEPIN_TOKEN: "${NEURAI_DEPIN_TOKEN:-&DEPINTESTING}"
       # Per-address quota enforced by the node (challenges + submissions / min).
-      NEURAI_DEPIN_RATE_LIMIT: "20"
+      NEURAI_DEPIN_RATE_LIMIT: "${NEURAI_DEPIN_RATE_LIMIT:-20}"
       NEURAI_DEPIN_MAX_MESSAGE_SIZE: "1024"
       NEURAI_DEPIN_MESSAGE_EXPIRY: "168"
       NEURAI_DEPIN_MAX_POOL_SIZE: "100"
       NEURAI_DEPIN_MAX_RECIPIENTS: "20"
-      # NEURAI_DEPIN_WALLET: "depin.dat"   # optional dedicated wallet file
+      # Optional dedicated wallet file (empty = default wallet).
+      NEURAI_DEPIN_WALLET: "${NEURAI_DEPIN_WALLET:-}"
 
       # ── Indexes ──────────────────────────────────────────────────────────
       NEURAI_TXINDEX: "1"
@@ -101,31 +109,30 @@ services:
 
     environment:
       NEURAI_NODE_NAME: "neuraid-testnet"
-      NEURAI_NODE_URL: "http://neuraid:19101"
-      NEURAI_RPC_USER: "neurai"
-      NEURAI_RPC_PASSWORD: "changeme"
+      NEURAI_NODE_URL: "http://neuraid:${NODE_RPC_PORT:-19101}"
+      NEURAI_RPC_USER: "${NODE_RPC_USER:-neurai}"
+      NEURAI_RPC_PASSWORD: "${NODE_RPC_PASSWORD:-changeme}"
       # DePIN protocol 2 goes through NEURAI_NODE_URL like any other RPC. The
       # proxy only adds a per-IP quota for depin* (shared by HTTP and WSS):
       # requests per minute, and minutes an IP that went over stays blocked.
-      PROXY_DEPIN_RATE_LIMIT: "60"
-      PROXY_DEPIN_BAN_MINUTES: "10"
+      PROXY_DEPIN_RATE_LIMIT: "${PROXY_DEPIN_RATE_LIMIT:-60}"
+      PROXY_DEPIN_BAN_MINUTES: "${PROXY_DEPIN_BAN_MINUTES:-10}"
       # Reverse proxies whose X-Forwarded-For is believed (HTTP and WSS). When
       # using Hestia/nginx on the host, add this Compose network's bridge
       # gateway (inspect it with `docker network inspect neurai_net_testnet`).
       # The reverse proxy must OVERWRITE the header ($remote_addr), never
       # append to it ($proxy_add_x_forwarded_for).
-      PROXY_TRUSTED_PROXIES: "127.0.0.1,::1,::ffff:127.0.0.1"
-      # PROXY_TRUSTED_PROXIES: "172.19.0.1,127.0.0.1,::1"
+      PROXY_TRUSTED_PROXIES: "${PROXY_TRUSTED_PROXIES:-127.0.0.1,::1,::ffff:127.0.0.1}"
       PROXY_WSS_ENABLED: "true"
-      PROXY_WSS_PORT: "19020"
+      PROXY_WSS_PORT: "${PROXY_WSS_PORT:-19020}"
       PROXY_WSS_PATH: "/push"
       PROXY_WSS_AUTH_TRANSPORT: "sec-websocket-protocol"
-      # Testnet-only token. Replace with a real secret for any deployment reachable from the internet.
-      PROXY_WSS_AUTH_TOKEN: "testnet-wss-token-do-not-use-in-production"
+      # Testnet-only default. Replace it in .env for any deployment reachable from the internet.
+      PROXY_WSS_AUTH_TOKEN: "${PROXY_WSS_AUTH_TOKEN:-testnet-wss-token-do-not-use-in-production}"
       PROXY_HTTP_ENABLED: "true"
       PROXY_HTTP_ENVIRONMENT: "Neurai Testnet"
-      PROXY_HTTP_ENDPOINT: "https://rpc-test.neurai.org/rpc"
-      PROXY_HTTP_MAX_RPS_PER_IP: "20"
+      PROXY_HTTP_ENDPOINT: "${PROXY_HTTP_ENDPOINT:-https://rpc-test.neurai.org/rpc}"
+      PROXY_HTTP_MAX_RPS_PER_IP: "${PROXY_HTTP_MAX_RPS_PER_IP:-20}"
       # Default deployment: behind a host reverse proxy that terminates TLS
       # (HestiaCP / nginx / Caddy / etc). The proxy listens on plain ws://
       # internally and the reverse proxy on the host adds TLS + LE renewal.
@@ -136,7 +143,7 @@ services:
       # then run `v-restart-web`:
       #
       #   location /push {
-      #       proxy_pass http://127.0.0.1:19020/push;
+      #       proxy_pass http://127.0.0.1:${PROXY_WSS_PORT}/push;   # 19020 by default
       #       proxy_http_version 1.1;
       #       proxy_set_header Upgrade $http_upgrade;
       #       proxy_set_header Connection "upgrade";
@@ -148,7 +155,7 @@ services:
       #   # Public HTTP RPC (`/rpc`, UI and metadata). Do not set
       #   # Upgrade/Connection here: these are ordinary HTTP requests.
       #   location / {
-      #       proxy_pass http://127.0.0.1:19020;
+      #       proxy_pass http://127.0.0.1:${PROXY_WSS_PORT};
       #       proxy_set_header Host $host;
       #       proxy_set_header X-Forwarded-For $remote_addr;
       #       proxy_set_header X-Forwarded-Proto $scheme;
@@ -163,15 +170,16 @@ services:
       # Optional local stats endpoint for ops/monitoring. When enabled, exposes
       # GET http://127.0.0.1:<port>/stats with sessions/subs/tip/zmq/queue.
       # Always loopback-only (unauthenticated); never publish the port.
-      PROXY_WSS_STATS_ENABLED: "false"
+      PROXY_WSS_STATS_ENABLED: "${PROXY_WSS_STATS_ENABLED:-false}"
       PROXY_WSS_STATS_PORT: "19021"
       PROXY_ZMQ_ENDPOINT: "tcp://neuraid:28332"
 
     ports:
-      # WSS push bound to localhost only. The host reverse proxy (HestiaCP nginx)
-      # reaches it via 127.0.0.1:19020. Never publish 19020 to the internet
-      # directly while TLS_ENABLED=false — anyone could forge X-Forwarded-For.
-      - "127.0.0.1:19020:19020"
+      # WSS + HTTP bound to PROXY_BIND (loopback by default). The host reverse
+      # proxy (HestiaCP nginx) reaches it via 127.0.0.1:PROXY_WSS_PORT. Never
+      # publish it to the internet while TLS_ENABLED=false — anyone could forge
+      # X-Forwarded-For.
+      - "${PROXY_BIND:-127.0.0.1}:${PROXY_WSS_PORT:-19020}:${PROXY_WSS_PORT:-19020}"
 
     networks:
       - neurai_net_testnet

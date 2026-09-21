@@ -1,4 +1,5 @@
 const { parseRawSats, nonNegativeSats } = require("../amounts");
+const walletRpc = require("./wallet-rpc");
 const sessionMod = require("./session");
 const { getIdentity } = require("../getRPCNode");
 const protocol = require("./protocol");
@@ -233,6 +234,7 @@ const handlers = {
       exact_amounts: selected === "wss/2",
       amounts: selected === "wss/2" ? "string-sats" : "number-sats",
       asset_mempool: false,
+      ...(selected === "wss/2" ? { wallet_rpc: walletRpc.capability } : {}),
       ...identity,
       protocol_min: "wss/1",
       protocol_max: protocol.VERSION,
@@ -633,6 +635,8 @@ const handlers = {
     }
     return response;
   },
+
+  "rpc.call": walletRpc.handle,
 
   "tx.broadcast": async (session, params) => {
     requireHello(session);

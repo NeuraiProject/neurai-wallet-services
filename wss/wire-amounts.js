@@ -1,3 +1,4 @@
+const { parseRpcJson, stringifyRpcJson } = require("@neuraiproject/neurai-rpc");
 const { parseRawSats } = require('../amounts');
 
 // Schema-directed copy: never mutate a shared notification or stringify unknown bigints.
@@ -24,7 +25,8 @@ function encodeMessage(message, method, protocol, onUnsafe = () => {}) {
   let out = { ...message };
   if (!out.error) {
     const kind = message.method || method;
-    if (kind === 'address.changed') out.params = state(out.params);
+    if (kind === 'rpc.call') out.result = parseRpcJson(stringifyRpcJson(out.result));
+    else if (kind === 'address.changed') out.params = state(out.params);
     else if (kind === 'address.subscribe' || kind === 'address.get_state') out.result = state(out.result);
     else if (kind === 'address.subscribe.bulk' && out.result) {
       out.result = { ...out.result, results: out.result.results.map(state) };

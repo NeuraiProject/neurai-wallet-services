@@ -754,3 +754,27 @@ npm test -- --runInBand
 
 Both supplied compose files use the repository root as build context. Builds
 no longer clone GitHub or fall back from `npm ci` to `npm install`.
+
+### Wallet construction using WSS only
+
+The mobile client no longer needs an HTTP companion. After `hello` negotiates
+`wss/2`, `hello.wallet_rpc` advertises `methods`, `amounts: "rpc-native-units"`
+and `numeric_encoding: "safe-number-or-string"`. A client can request:
+
+```json
+{"id":2,"method":"rpc.call","params":{"method":"getaddressutxos","params":[{"addresses":["ADDRESS"]}]}}
+```
+
+The response has the node's native schema, including prevout scripts. Unsafe
+integers and decimals remain exact strings; these are **native RPC units**,
+not uniformly satoshis. Address-state messages still use `string-sats`.
+The whitelist lives in `wss/wallet-rpc.js`; node wallet/private-key/admin
+commands are excluded. Transaction construction and signing remain local;
+broadcast uses the existing `tx.broadcast`. DePIN uses the existing `depin.*`
+methods with `{args: [...]}`, preserving protocol-2 signatures and rate limits.
+No HTTP server is required (`http.enabled: false` is supported).
+
+Deploy this service extension before the WSS-only mobile client. Older services
+can still provide balances, but clients must refuse unavailable construction
+methods rather than contact an unrelated HTTP RPC. Existing v1 clients are
+unchanged. This transport change does not activate PQ on mainnet.

@@ -1,3 +1,4 @@
+const { parseRawSats } = require("../amounts");
 const crypto = require("crypto");
 
 // Status hash: fixed-order string, never JSON.stringify.
@@ -28,7 +29,7 @@ function statusString(state) {
   const utxos = Array.isArray(state && state.utxos) ? state.utxos.slice() : [];
   utxos.sort(compareUtxo);
   const utxosStr = utxos
-    .map((u) => `${u.txid}:${u.vout}:${u.value}:${u.asset || ""}`)
+    .map((u) => `${u.txid}:${u.vout}:${parseRawSats(u.value)}:${u.asset || ""}`)
     .join(",");
 
   // Assets section: always present (empty when address has no asset activity).
@@ -41,19 +42,19 @@ function statusString(state) {
       const a = assets[n] || {};
       const c = a.confirmed == null ? 0 : a.confirmed;
       const u = a.unconfirmed == null ? 0 : a.unconfirmed;
-      return `${n}=${c},${u}`;
+      return `${n}=${parseRawSats(c)},${parseRawSats(u)}`;
     })
     .join(";");
 
   const assetUtxos = Array.isArray(state && state.assetUtxos) ? state.assetUtxos.slice() : [];
   assetUtxos.sort(compareUtxo);
   const assetUtxosStr = assetUtxos
-    .map((u) => `${u.asset || ""}:${u.txid}:${u.vout}:${u.value}`)
+    .map((u) => `${u.asset || ""}:${u.txid}:${u.vout}:${parseRawSats(u.value)}`)
     .join(",");
 
   return (
-    `balance.confirmed:${confirmed}` +
-    `|balance.unconfirmed:${unconfirmed}` +
+    `balance.confirmed:${parseRawSats(confirmed)}` +
+    `|balance.unconfirmed:${parseRawSats(unconfirmed)}` +
     `|mempool:${mempoolStr}` +
     `|utxos:${utxosStr}` +
     `|assets:${assetsStr}` +

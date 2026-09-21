@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 
+: "${PROXY_SERVICE_ID:=neurai-wallet-service}"
 : "${NEURAI_NODE_NAME:=neuraid-testnet}"
 : "${NEURAI_NODE_URL:=http://neuraid:19101}"
 : "${NEURAI_RPC_USER:=neurai}"
@@ -78,6 +79,7 @@ fi
 
 cat > /app/config.json <<EOF
 {
+  "service_id": "${PROXY_SERVICE_ID}",
   "trusted_proxy_ips": ${PROXY_TRUSTED_PROXY_IPS_JSON},
   "depin": {
     "rate_limit": ${PROXY_DEPIN_RATE_LIMIT},

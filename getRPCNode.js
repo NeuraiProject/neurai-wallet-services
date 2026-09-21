@@ -1,8 +1,11 @@
+const { readIdentity, sameChain } = require("./service-identity");
 const NeuraiRPC = require("@neuraiproject/neurai-rpc");
 
 const getConfig = require("./getConfig");
 const config = getConfig();
 const allNodes = [];
+let identity = null;
+let checking = null;
 
 // DePIN protocol 2 is served on the node's own RPC port: there is no DePIN
 // URL, port or gateway any more. The protocol 1 keys are ignored with a notice.
@@ -19,34 +22,38 @@ for (const node of config.nodes) {
 }
 
 /* Every x seconds, check the status of the nodes */
-async function healthCheck() {
-  for (const node of allNodes) {
-    try {
-      const a = await node.rpc("getbestblockhash", []);
-      node.bestblockhash = a;
-      node.active = true;
-    } catch {
-      node.active = false;
+function healthCheck() {
+  if (checking) return checking;
+  checking = (async () => {
+    for (const node of allNodes) {
+      try {
+        const found = await readIdentity(node.rpc);
+        if (config.genesis_hash && config.genesis_hash !== found.genesis_hash) throw new Error("Configured genesis mismatch");
+        if (config.network && config.network !== found.network) throw new Error("Configured network mismatch");
+        if (identity && !sameChain(identity, found)) throw new Error("Failover chain mismatch");
+        if (!identity) identity = found;
+        node.bestblockhash = await node.rpc("getbestblockhash", []);
+        node.active = true;
+      } catch {
+        node.active = false;
+      }
     }
-  }
+  })().finally(() => { checking = null; });
+  return checking;
 }
-setInterval(healthCheck, 10 * 1000);
+const healthTimer = setInterval(healthCheck, 10 * 1000);
+healthTimer.unref();
 healthCheck();
 
 function getRPCNode() {
-  for (const n of allNodes) {
-    if (n.active === true) {
-      return {
-        rpc: n.rpc,
-        name: n.name,
-      };
-    }
-  }
-  //We did not find any active node so we return the first
-  return {
-    name: allNodes[0].name,
-    rpc: allNodes[0].rpc,
-  };
+  const node = allNodes.find(n => n.active);
+  if (!node) throw new Error("No healthy node with validated chain identity");
+  return { rpc: node.rpc, name: node.name };
+}
+async function getIdentity() {
+  if (!allNodes.some(n => n.active)) await healthCheck();
+  getRPCNode();
+  return { ...identity, service_id: config.service_id || null };
 }
 function getNodes() {
   const list = [];
@@ -60,4 +67,4 @@ function getNodes() {
   return list;
 }
 
-module.exports = { getRPCNode, getNodes };
+module.exports = { getRPCNode, getNodes, getIdentity };

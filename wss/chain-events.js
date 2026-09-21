@@ -30,8 +30,41 @@ let methodsRef = null;
 let prevoutCache = null;
 let invalidateDepth = 60;
 let blockIndexSize = 120;
+let stopped = false;
+const retries = new Map();
+const refreshing = new Map();
+let retryBase = 1000;
+let retryMax = 30000;
+function cancelRetry(address) {
+  const entry = retries.get(address);
+  if (entry) clearTimeout(entry.timer);
+  retries.delete(address);
+}
+subscriptions.onEmpty(cancelRetry);
+function stop() {
+  stopped = true;
+  for (const address of retries.keys()) cancelRetry(address);
+}
+function markStale(address) {
+  if (stopped || !subscriptions.getSubscribers(address)) return;
+  const previous = retries.get(address);
+  if (previous && previous.timer) return;
+  if (!previous) notifications.notifyAddress(address, "address.sync_status", { address, stale: true, reason: "upstream_unavailable" });
+  const delay = previous ? Math.min(previous.delay * 2, retryMax) : retryBase;
+  const entry = { delay, timer: null };
+  entry.timer = setTimeout(() => {
+    entry.timer = null;
+    refreshAddress(address, "resync").catch(error => console.log("[chain-events] retry failed:", describeForLog(error)));
+  }, delay);
+  if (entry.timer.unref) entry.timer.unref();
+  retries.set(address, entry);
+}
 
 function configure(opts) {
+  stop();
+  stopped = false;
+  retryBase = opts.retry_base_ms || 1000;
+  retryMax = opts.retry_max_ms || 30000;
   methodsRef = opts.methods;
   prevoutCache = opts.prevoutCache || null;
   invalidateDepth = opts.invalidate_depth || opts.invalidateDepth || 60;
@@ -89,15 +122,29 @@ async function warmup() {
   }
 }
 
-async function refreshAddress(address, reason, extraDelta) {
+function refreshAddress(address, reason, extraDelta) {
+  const previous = refreshing.get(address) || Promise.resolve();
+  const operation = previous.catch(() => {}).then(() => refreshAddressNow(address, reason, extraDelta));
+  refreshing.set(address, operation);
+  operation.finally(() => { if (refreshing.get(address) === operation) refreshing.delete(address); }).catch(() => {});
+  return operation;
+}
+async function refreshAddressNow(address, reason, extraDelta) {
+  if (stopped || !subscriptions.getSubscribers(address)) return;
   if (!methodsRef || typeof methodsRef.fetchAddressState !== "function") return;
   let state;
   try {
     state = await methodsRef.fetchAddressState(address);
-  } catch {
+  } catch (error) {
+    console.log("[chain-events] address refresh failed:", describeForLog(error));
+    markStale(address);
     return;
   }
-  if (!state) return;
+  if (stopped || !subscriptions.getSubscribers(address)) return;
+  if (!state) { markStale(address); return; }
+  const recovered = retries.has(address);
+  cancelRetry(address);
+  if (recovered) notifications.notifyAddress(address, "address.sync_status", { address, stale: false, reason: "recovered" });
   const newStatus = state.status;
   const oldStatus = chainState.getLastStatus(address);
   if (newStatus === oldStatus) return;
@@ -354,6 +401,7 @@ async function onInitialTip(blockHash) {
 }
 
 module.exports = {
+  stop,
   configure,
   warmup,
   onBlock,

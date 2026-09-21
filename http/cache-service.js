@@ -1,3 +1,4 @@
+const { stringifyRpcJson } = require("@neuraiproject/neurai-rpc");
 function create() {
   const cache = new Map();
   const methodsRequested = Object.create(null);
@@ -6,7 +7,7 @@ function create() {
     "getassetdata", "listaddressesbyasset", "listassetbalancesbyaddress", "listassets",
     "decodeblock", "getbestblockhash", "getblock", "getblockchaininfo", "getblockcount",
     "getblockhash", "getblockhashes", "getblockheader", "getchaintxstats", "getdifficulty",
-    "getpubkey", "getspentinfo", "gettxout", "gettxoutproof", "gettxoutsetinfo",
+    "getpubkey", "getspentinfo", "gettxoutproof", "gettxoutsetinfo",
     "preciousblock", "verifychain", "verifytxoutproof", "help", "uptime", "decoderawtransaction",
     "decodescript", "checkaddressrestriction", "checkaddresstag", "checkglobalrestriction",
     "getverifierstring", "isvalidverifierstring", "listaddressesfortag", "listaddressrestrictions",
@@ -18,14 +19,14 @@ function create() {
     // but the reply carries that poolsig).
     "checkdepinvalidity", "listdepinholders", "listdepinaddresses",
   ]);
-  const key = (method, params) => JSON.stringify({ method, params });
+  const key = (method, params) => stringifyRpcJson({ method, params });
   return {
     addMethod(name, date) { methodsRequested[name] = date; },
     getMethods() { return methodsRequested; },
     getKeys() { return [...cache.keys()]; },
     get(method, params) { return cache.get(key(method, params)); },
     put(method, params, value) { cache.set(key(method, params), value); },
-    remove(method, params) { cache.delete(key(method, params)); },
+    remove(method, params, expected) { const k = key(method, params); if (cache.get(k) === expected) cache.delete(k); },
     clear() { cache.clear(); },
     shouldCache(method) { return cacheable.has(method); },
   };

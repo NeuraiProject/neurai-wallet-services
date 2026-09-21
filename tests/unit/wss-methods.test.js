@@ -2,7 +2,7 @@
 // @neuraiproject/neurai-rpc (see rpcError.js), and to the `undefined` result
 // 0.4.7 produced for JSON-RPC errors delivered with HTTP 200.
 jest.mock("../../wss/rpc", () => ({ callRPC: jest.fn(), initQueue: jest.fn(), getQueueStats: () => ({ size: 0, pending: 0 }) }));
-jest.mock("../../getRPCNode", () => ({ getRPCNode: () => ({ rpc: jest.fn() }), getNodes: () => [] }));
+jest.mock("../../getRPCNode", () => ({ getRPCNode: () => ({ rpc: jest.fn() }), getNodes: () => [], getIdentity: async () => ({ network: "testnet", genesis_hash: "a".repeat(64), service_id: "test" }) }));
 
 const { callRPC } = require("../../wss/rpc");
 const nodeHealth = require("../../wss/node-health");
@@ -49,12 +49,12 @@ test("tx.broadcast reports an upstream failure neutrally", async () => {
 
 test("hello tolerates a failing tip lookup", async () => {
   withRpc({ getbestblockhash: { reject: shape3 } });
-  const result = await handlers.hello(session(), { protocol: "wss/1" });
+  const result = await handlers.hello({ ...session(), helloDone: false }, { protocol: "wss/1" });
   expect(result.tip_hash).toBe(null);
   expect(result.tip_height).toBe(null);
 });
 
-test("address.get_state: a rejected getaddressdeltas yields an empty history, not an error", async () => {
+test("address.get_state: a rejected getaddressdeltas fails without publishing empty history", async () => {
   withRpc({
     validateaddress: { isvalid: true },
     getaddressbalance: [{ assetName: "XNA", balance: 5, received: 5 }],
@@ -62,9 +62,7 @@ test("address.get_state: a rejected getaddressdeltas yields an empty history, no
     getaddressutxos: [],
     getaddressdeltas: { reject: shape2 },
   });
-  const result = await handlers["address.get_state"](session(), { address: "Nabc" }, ctx);
-  expect(result.history).toEqual([]);
-  expect(result.balance).toEqual({ confirmed: 5, unconfirmed: 0 });
+  await expect(handlers["address.get_state"](session(), { address: "Nabc" }, ctx)).rejects.toEqual(shape2);
 });
 
 test("address.get_state: an `undefined` validateaddress (0.4.7 on HTTP-200 errors) reads as invalid address", async () => {
@@ -73,7 +71,7 @@ test("address.get_state: an `undefined` validateaddress (0.4.7 on HTTP-200 error
   expect(e.code).toBe(ERROR_CODES.INVALID_PARAMS);
 });
 
-test("address.subscribe: balance lookups that reject degrade to zero balances", async () => {
+test("address.subscribe: balance failure rolls back a new subscription", async () => {
   withRpc({
     validateaddress: { isvalid: true },
     getaddressbalance: { reject: shape2 },
@@ -81,7 +79,67 @@ test("address.subscribe: balance lookups that reject degrade to zero balances", 
     getaddressutxos: { reject: shape1 },
     getblockcount: 10,
   });
-  const result = await handlers["address.subscribe"](session(), { address: "Nabc" }, ctx);
-  expect(result.balance).toEqual({ confirmed: 0, unconfirmed: 0 });
-  expect(result.height).toBe(10);
+  const client = session();
+  await expect(handlers["address.subscribe"](client, { address: "Nabc" }, ctx)).rejects.toEqual(shape2);
+  expect(client.subs.size).toBe(0);
+});
+
+function healthy(overrides = {}) {
+  withRpc({ validateaddress: { isvalid: true }, getaddressbalance: [], getaddressmempool: [], getaddressutxos: [], getaddressdeltas: [], ...overrides });
+}
+test.each([undefined, 'wss/1', 'wss/2'])('negotiates %s and cannot renegotiate', async protocol => {
+  healthy();
+  const client = { ...session(), helloDone: false };
+  const result = await handlers.hello(client, { protocol, network: 'testnet' });
+  expect(result.protocol).toBe(protocol || 'wss/1');
+  expect(result.exact_amounts).toBe(protocol === 'wss/2');
+  await expect(handlers.hello(client, { protocol: 'wss/2' })).rejects.toThrow('already');
+});
+test('unsupported protocol and wrong network do not complete hello', async () => {
+  const client = { ...session(), helloDone: false };
+  await expect(handlers.hello(client, { protocol: 'wss/9' })).rejects.toMatchObject({ code: 1001 });
+  await expect(handlers.hello(client, { network: 'mainnet' })).rejects.toThrow('network');
+  expect(client.helloDone).toBe(false);
+});
+test('empty state is valid; required monetary fields are not optional', async () => {
+  healthy();
+  expect((await handlers['address.get_state'](session(), { address: 'empty' }, ctx)).balance).toEqual({ confirmed: 0n, unconfirmed: 0n });
+  healthy({ getaddressbalance: [{ assetName: 'XNA' }] });
+  await expect(handlers['address.get_state'](session(), { address: 'bad' }, ctx)).rejects.toThrow('amount');
+});
+test('large opposite deltas aggregate to one satoshi, all internal rows normalize', async () => {
+  healthy({ getaddressbalance: [{ assetName: 'XNA', balance: '10000000000000001' }],
+    getaddressmempool: [{ satoshis: '-10000000000000001', txid: 'm' }, { satoshis: '10000000000000000', txid: 'n' }],
+    getaddressdeltas: [{ height: 1, blockindex: 0, txid: 't', satoshis: '10000000000000001' }, { height: 1, blockindex: 0, txid: 't', satoshis: '-10000000000000000' }] });
+  const state = await handlers['address.get_state'](session(), { address: 'a' }, ctx);
+  expect(state.balance).toEqual({ confirmed: 10000000000000001n, unconfirmed: -1n });
+  expect(state.history[0].satoshis).toBe(1n);
+  expect(state.mempool[0].satoshis).toBe(-10000000000000001n);
+});
+test('bulk preserves successes and existing subscriptions when a new initial fetch fails', async () => {
+  const subscriptions = require('../../wss/subscriptions');
+  const client = session();
+  subscriptions.subscribe('old', client);
+  healthy({ getaddressbalance: params => { if (params[0].addresses[0] !== 'ok') throw new Error('offline'); return []; } });
+  const result = await handlers['address.subscribe.bulk'](client, { addresses: ['old', 'new', 'ok'] }, ctx);
+  expect(result.results.map(r => !!r.error)).toEqual([true, true, false]);
+  expect([...client.subs]).toEqual(['old', 'ok']);
+  subscriptions.unsubscribeAll(client);
+});
+test('concurrent subscriptions cannot exceed a session cap', async () => {
+  healthy();
+  const client = session();
+  const results = await Promise.allSettled(['a', 'b'].map(address => handlers['address.subscribe'](client, { address }, { config: { ...ctx.config, max_subscriptions_per_session: 1 } })));
+  expect(results.map(r => r.status)).toEqual(['fulfilled', 'rejected']);
+  require('../../wss/subscriptions').unsubscribeAll(client);
+});
+test('history and UTXO pagination preserve exact values across all pages', async () => {
+  healthy({ getaddressutxos: [{ txid: 'a', outputIndex: 0, height: 1, satoshis: '10000000000000001' }, { txid: 'b', outputIndex: 0, height: 2, satoshis: '10000000000000003' }],
+    getaddressdeltas: [{ height: 1, blockindex: 0, txid: 'a', satoshis: '10000000000000001' }, { height: 2, blockindex: 0, txid: 'b', satoshis: '-10000000000000003' }] });
+  const first = await handlers['address.get_state'](session(), { address: 'a', limit: 1, utxo_limit: 1 }, ctx);
+  expect(first.page.has_more).toBe(true); expect(first.utxo_page.has_more).toBe(true);
+  const second = await handlers['address.get_state'](session(), { address: 'a', limit: 1, utxo_limit: 1, cursor: first.page.next_cursor, utxo_cursor: first.utxo_page.next_cursor }, ctx);
+  expect(second.history[0].satoshis).toBe(-10000000000000003n);
+  expect(second.utxos[0].satoshis).toBe(10000000000000003n);
+  expect(second.page.has_more).toBe(false); expect(second.utxo_page.has_more).toBe(false);
 });

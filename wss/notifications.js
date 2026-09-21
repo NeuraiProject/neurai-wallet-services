@@ -8,6 +8,7 @@ function broadcast(method, params) {
   let count = 0;
   for (const s of sessionMod.getAllSessions()) {
     if (!s.helloDone) continue;
+    if (method === "address.sync_status" && s.protocol !== "wss/2") continue;
     if (sessionMod.sendJson(s, evt)) count++;
   }
   return count;
@@ -21,6 +22,7 @@ function notifyAddress(address, method, params) {
   let count = 0;
   for (const s of subs) {
     if (!s.helloDone) continue;
+    if (method === "address.sync_status" && s.protocol !== "wss/2") continue;
     if (sessionMod.sendJson(s, evt)) count++;
   }
   return count;

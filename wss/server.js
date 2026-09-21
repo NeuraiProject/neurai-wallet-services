@@ -249,7 +249,9 @@ function start(config, ctx, httpService) {
       }
       try {
         const result = await handler(session, msg.params, ctx);
-        sessionMod.sendJson(session, makeResponse(msg.id, result));
+        if (!sessionMod.sendJson(session, makeResponse(msg.id, result), msg.method)) {
+          sessionMod.sendJson(session, makeError(msg.id, ERROR_CODES.INTERNAL_ERROR, "response encoding failed"));
+        }
       } catch (e) {
         if (e instanceof MethodError) {
           sessionMod.sendJson(session, makeError(msg.id, e.code, e.message, e.extra));
@@ -284,6 +286,7 @@ function start(config, ctx, httpService) {
     );
   });
 
+  server.on("close", () => chainEvents.stop());
   startChainEvents(config, httpService);
 
   return { server, wss };

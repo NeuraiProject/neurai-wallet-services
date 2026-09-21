@@ -119,3 +119,11 @@ test("statusHash is stable across equivalent inputs", () => {
   });
   expect(a).toBe(b);
 });
+
+test('literal pre-migration hash stays stable for exact equivalent representations', () => {
+  for (const convert of [x => x, String, BigInt]) {
+    expect(statusHash({ balance: { confirmed: convert(1), unconfirmed: convert(2) }, mempoolTxids: ['aa'],
+      utxos: [{ txid: 'bb', vout: 0, value: convert(5), asset: '' }] })).toBe('36ec756c01c2ca71df4aa3e7a2ef87870a2c64022ba8cb07beed16687e402a50');
+  }
+  expect(statusHash({ balance: { confirmed: '10000000000000001' } })).not.toBe(statusHash({ balance: { confirmed: '10000000000000000' } }));
+});

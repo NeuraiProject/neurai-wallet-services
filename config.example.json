@@ -1,4 +1,6 @@
 {
+  "service_id": "neurai-testnet-wallet-service",
+  "network": "testnet",
   "trusted_proxy_ips": ["127.0.0.1", "::1", "::ffff:127.0.0.1"],
 
   "depin": {

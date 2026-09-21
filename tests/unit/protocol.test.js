@@ -9,8 +9,8 @@ const {
   makeEvent,
 } = require("../../wss/protocol");
 
-test("VERSION is wss/1", () => {
-  expect(VERSION).toBe("wss/1");
+test("VERSION is wss/2 with legacy support", () => {
+  expect(VERSION).toBe("wss/2");
   expect(SUPPORTED_PROTOCOLS).toContain("wss/1");
 });
 

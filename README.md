@@ -689,3 +689,68 @@ docker compose -f docker/testnet/docker-compose.yml -f tests/docker-compose.yml 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## 1.1.1: exact amounts and paired wallet transports
+
+The service uses `@neuraiproject/neurai-rpc` **0.6.1** and `lossless-json`
+with a locked dependency tree. Address balances, UTXOs, history and mempool
+are normalized and summed as `bigint`. Missing/invalid monetary data or an
+upstream failure returns an error instead of a fabricated zero balance.
+Asset amounts are raw integers at scale 1e8, regardless of asset `units`.
+Asset mempool is not queried yet (`asset_mempool: false` in hello); asset
+unconfirmed zeros are placeholders, not verified pending balances.
+
+WebSocket still uses the HTTP subprotocol `wss` (plus `auth.<token>`).
+Send `hello` with `protocol: "wss/2"` for `exact_amounts: true` and
+`amounts: "string-sats"`. All monetary fields in subscribe, bulk subscribe,
+get_state and address.changed are canonical integer strings, including zero
+and negative deltas. Heights, indices, IDs and error codes keep their types.
+Omitting the version selects `wss/1`, which deliberately converts amounts to
+numbers and advertises `exact_amounts: false`. Unknown versions get application
+error 1001, then WebSocket close 1002. A second hello cannot change the session.
+A small legacy result does not prove that its upstream arithmetic was exact.
+
+`POST /rpc` preserves numeric parameter tokens, including nested decimals and
+large integers. Responses retain native RPC units: address balances are sats,
+transaction output values are XNA, fee rates are XNA/kB. Values are safe numbers
+or exact strings according to the RPC parser, **not uniformly string sats**.
+`GET /rpc` remains 405. Cache keys preserve parameter types, and `gettxout`
+bypasses the block cache because mempool spends change its result.
+
+Configure root `service_id` as a stable identifier shared by WSS/HTTP and all
+replicas of this logical service. Docker accepts `PROXY_SERVICE_ID` (default
+`neurai-wallet-service`; set a distinct value for each deployment). Optional
+root `network` (`mainnet`, `testnet`, `regtest`) and `genesis_hash` pin the node
+pool. Nodes with a different validated chain cannot be selected for failover;
+if none is available, requests fail. The service no longer silently selects an
+unhealthy first node. `hello` and `GET /settings` expose actual node network,
+genesis hash and service ID. Missing `service_id` is returned as null, so a
+wallet cannot certify an unconfigured pair. Settings retains its existing
+fields and adds `exact_amounts`, `amounts: "rpc-native-units"`, and
+`numeric_encoding: "safe-number-or-string"`.
+
+The wallet engine should use the explicitly configured companion HTTP `/rpc`
+for full RPC semantics and signing scripts; WSS supplies state and pushes.
+Before construction, check HTTP capabilities and chain identity against WSS
+and the expected network. Never silently replace a custom endpoint with a
+public RPC. Direct node RPC is a separate mode and does not require `/settings`.
+
+On a failed initial subscription, only a new subscription is rolled back;
+existing subscriptions remain. A failed refresh preserves the last status,
+retries with bounded exponential backoff (1–30 seconds), and emits v2-only
+`address.sync_status` with `{address, stale: true, reason: "upstream_unavailable"}`.
+Recovery emits `stale: false, reason: "recovered"` even if the monetary hash is
+unchanged. Clients keep their previous data visibly stale until recovery.
+Unsubscribing the last client cancels pending retries. Session statistics now
+include active and cumulative negotiations by version, unsafe v1 amount
+conversions (both signs), and encoding/send failures.
+
+The Docker proxy now builds the **local repository** with `npm ci --omit=dev`:
+
+```sh
+docker build -f docker/rpc-proxy/Dockerfile -t neurai-wallet-services:1.1.1 .
+npm test -- --runInBand
+```
+
+Both supplied compose files use the repository root as build context. Builds
+no longer clone GitHub or fall back from `npm ci` to `npm install`.

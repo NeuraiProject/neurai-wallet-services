@@ -16,7 +16,7 @@ function httpGet(server) {
 test("HTTP and WebSocket upgrades coexist on one listener", async () => {
   const service = create({ enabled: true, environment: "test", max_requests_per_second: 100 }, null, {
     rpc: async () => 1,
-    nodeDeps: { getNodes: () => [] },
+    nodeDeps: { getNodes: () => [], getIdentity: async () => ({ network: "testnet", service_id: "test", genesis_hash: "a".repeat(64) }) },
   });
   const server = http.createServer();
   attachHttpService(server, service);
@@ -25,7 +25,7 @@ test("HTTP and WebSocket upgrades coexist on one listener", async () => {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 
   const settings = await httpGet(server);
-  expect(settings).toEqual({ status: 200, body: { environment: "test" } });
+  expect(settings).toMatchObject({ status: 200, body: { environment: "test", exact_amounts: true, amounts: "rpc-native-units", service_id: "test" } });
   const ws = new WebSocket(`ws://127.0.0.1:${server.address().port}/push`);
   await new Promise((resolve, reject) => { ws.once("open", resolve); ws.once("error", reject); });
   ws.close();

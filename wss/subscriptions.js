@@ -1,3 +1,5 @@
+const emptyListeners = new Set();
+function notifyEmpty(address) { for (const listener of emptyListeners) listener(address); }
 // address -> Set<session>
 const addressSubs = new Map();
 
@@ -15,7 +17,7 @@ function unsubscribe(address, session) {
   const set = addressSubs.get(address);
   if (set) {
     set.delete(session);
-    if (set.size === 0) addressSubs.delete(address);
+    if (set.size === 0) { addressSubs.delete(address); notifyEmpty(address); }
   }
   session.subs.delete(address);
 }
@@ -25,7 +27,7 @@ function unsubscribeAll(session) {
     const set = addressSubs.get(address);
     if (set) {
       set.delete(session);
-      if (set.size === 0) addressSubs.delete(address);
+      if (set.size === 0) { addressSubs.delete(address); notifyEmpty(address); }
     }
   }
   session.subs.clear();
@@ -49,6 +51,7 @@ function getStats() {
 }
 
 module.exports = {
+  onEmpty(listener) { emptyListeners.add(listener); return () => emptyListeners.delete(listener); },
   subscribe,
   unsubscribe,
   unsubscribeAll,

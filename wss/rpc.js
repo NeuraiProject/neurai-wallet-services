@@ -1,5 +1,5 @@
 const { default: PQueue } = require("p-queue");
-const { getRPCNode } = require("../getRPCNode");
+const { getRPCNode, getIdentity } = require("../getRPCNode");
 
 let pushQueue = null;
 
@@ -15,6 +15,7 @@ function initQueue(concurrency) {
 function callRPC(method, params, priority = 0) {
   if (!pushQueue) initQueue(4);
   return pushQueue.add(async () => {
+    await getIdentity();
     const node = getRPCNode();
     return node.rpc(method, params == null ? [] : params);
   }, { priority });

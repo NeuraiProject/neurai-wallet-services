@@ -1,3 +1,10 @@
+const { parse, LosslessNumber } = require("lossless-json");
+function rejectNumberImpersonation(_key, value) {
+  if (value && typeof value === "object" && value.isLosslessNumber === true && !(value instanceof LosslessNumber)) {
+    throw new TypeError("Invalid numeric object");
+  }
+  return value;
+}
 const staticFiles = require("./static");
 
 const JSON_LIMIT = 2 * 1024 * 1024;
@@ -30,7 +37,7 @@ function readJsonBody(req) {
     });
     req.on("end", () => {
       if (tooLarge) return;
-      try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); }
+      try { resolve(parse(Buffer.concat(chunks).toString("utf8"), rejectNumberImpersonation)); }
       catch { reject(Object.assign(new Error("invalid json"), { status: 400 })); }
     });
     req.on("error", reject);
@@ -42,14 +49,17 @@ function createHandler(deps) {
     // Do not use URL here: it normalizes `/../` before static.js can reject it.
     const pathname = (req.url || "/").split("?", 1)[0] || "/";
     if (req.method === "OPTIONS") {
-      res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, HEAD, POST, OPTIONS", "access-control-allow-headers": "content-type" }); res.end(); return;
+      res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, HEAD, POST, OPTIONS", "access-control-allow-headers": "content-type, authorization" }); res.end(); return;
     }
     if (API_PATHS.includes(pathname) && !deps.tryAccept(req)) {
       return sendJson(res, 429, { error: "rate limit exceeded" }, { "retry-after": "1" });
     }
     if (req.method === "GET" && pathname === "/whitelist") return sendJson(res, 200, deps.whitelist);
     if (req.method === "GET" && pathname === "/getCache") return sendJson(res, 200, deps.getCache());
-    if (req.method === "GET" && pathname === "/settings") return sendJson(res, 200, deps.settings);
+    if (req.method === "GET" && pathname === "/settings") {
+      try { return sendJson(res, 200, typeof deps.settings === "function" ? await deps.settings() : deps.settings); }
+      catch { return sendJson(res, 503, { error: "Service identity unavailable" }); }
+    }
     // Body text kept verbatim from the retired proxy's GET /rpc response.
     if (req.method === "GET" && (POST_ROUTES[pathname] || GONE_ROUTES.includes(pathname))) return sendJson(res, 405, { description: "Please use the HTTP POST method to proceed. For more details, refer to our documentation." }, { allow: "POST" });
     if (req.method === "POST" && GONE_ROUTES.includes(pathname)) { req.resume(); return sendJson(res, 410, GONE_BODY); }

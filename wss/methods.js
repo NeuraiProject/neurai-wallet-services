@@ -1,3 +1,6 @@
+const { parseRawSats, nonNegativeSats } = require("../amounts");
+const sessionMod = require("./session");
+const { getIdentity } = require("../getRPCNode");
 const protocol = require("./protocol");
 const { ERROR_CODES } = protocol;
 const { callRPC } = require("./rpc");
@@ -45,7 +48,7 @@ function projectAssets(assetsFromState, filter) {
   const out = {};
   for (const name of filter.names) {
     if (assetsFromState[name]) out[name] = assetsFromState[name];
-    else out[name] = { confirmed: 0, unconfirmed: 0 };
+    else out[name] = { confirmed: 0n, unconfirmed: 0n };
   }
   return out;
 }
@@ -107,29 +110,36 @@ async function annotateHistoryWithBlockTime(history) {
   return history;
 }
 
+function normalizeRows(rows, nonNegative) {
+  if (!Array.isArray(rows)) throw new Error("Invalid monetary rows response");
+  return rows.map(row => ({ ...row, satoshis: (nonNegative ? nonNegativeSats : parseRawSats)(row && row.satoshis) }));
+}
+
 async function fetchAddressState(address) {
   // Always fetch native + all assets in parallel. The asset data feeds into
   // the status hash so any asset change (not just native) will trigger an
   // address.changed event downstream. Handlers may still filter what they
   // return to the client based on the `assets` param.
   const [balanceRaw, mempoolRaw, nativeUtxosRaw, assetUtxosRaw] = await Promise.all([
-    callRPC("getaddressbalance", [{ addresses: [address] }, true]).catch(() => null),
-    callRPC("getaddressmempool", [{ addresses: [address] }]).catch(() => []),
-    callRPC("getaddressutxos", [{ addresses: [address] }]).catch(() => []),
-    callRPC("getaddressutxos", [{ addresses: [address], assetName: "*" }]).catch(() => []),
+    callRPC("getaddressbalance", [{ addresses: [address] }, true]),
+    callRPC("getaddressmempool", [{ addresses: [address] }]),
+    callRPC("getaddressutxos", [{ addresses: [address] }]),
+    callRPC("getaddressutxos", [{ addresses: [address], assetName: "*" }]),
   ]);
 
   // Native balance + per-asset balances. getaddressbalance with includeAssets
   // returns an array of {assetName, balance, received}; XNA is the native.
-  let confirmedNative = 0;
-  const assets = {};
+  let confirmedNative = 0n;
+  const assets = Object.create(null);
+  if (!Array.isArray(balanceRaw)) throw new Error("Invalid balance response");
   if (Array.isArray(balanceRaw)) {
     for (const b of balanceRaw) {
-      if (!b || typeof b.balance !== "number") continue;
+      if (!b || typeof b.assetName !== "string") throw new Error("Invalid asset balance");
+      const raw = nonNegativeSats(b.balance);
       if (b.assetName === NATIVE_ASSET) {
-        confirmedNative = b.balance;
+        confirmedNative = raw;
       } else {
-        assets[b.assetName] = { confirmed: b.balance, unconfirmed: 0 };
+        assets[b.assetName] = { confirmed: raw, unconfirmed: 0n };
       }
     }
   }
@@ -137,13 +147,13 @@ async function fetchAddressState(address) {
   // Native mempool — note: getaddressmempool returns native by default. Asset
   // mempool entries would need a separate query with assetName; for now we
   // capture native only. Asset mempool will be covered in a follow-up.
-  const mempool = Array.isArray(mempoolRaw) ? mempoolRaw : [];
-  let unconfirmedNative = 0;
+  const mempool = normalizeRows(mempoolRaw, false);
+  let unconfirmedNative = 0n;
   for (const m of mempool) {
-    if (typeof m.satoshis === "number") unconfirmedNative += m.satoshis;
+    unconfirmedNative += m.satoshis;
   }
 
-  const utxos = Array.isArray(nativeUtxosRaw) ? nativeUtxosRaw : [];
+  const utxos = normalizeRows(nativeUtxosRaw, true);
   const utxosForHash = utxos.map((u) => ({
     txid: u.txid,
     vout: u.outputIndex,
@@ -151,7 +161,7 @@ async function fetchAddressState(address) {
     asset: u.assetName || "",
   }));
 
-  const assetUtxosRawArr = Array.isArray(assetUtxosRaw) ? assetUtxosRaw : [];
+  const assetUtxosRawArr = normalizeRows(assetUtxosRaw, true);
   const assetUtxosForHash = assetUtxosRawArr.map((u) => ({
     txid: u.txid,
     vout: u.outputIndex,
@@ -183,15 +193,21 @@ async function fetchAddressState(address) {
 }
 
 const handlers = {
-  hello: async (session, params /*, ctx */) => {
-    if (params && params.protocol && !protocol.SUPPORTED_PROTOCOLS.includes(params.protocol)) {
-      throw new MethodError(
-        ERROR_CODES.UNSUPPORTED_PROTOCOL,
-        "unsupported protocol",
-        { supported: protocol.SUPPORTED_PROTOCOLS },
-      );
+  hello: async (session, params) => {
+    if (session.helloDone) throw new MethodError(ERROR_CODES.INVALID_PARAMS, "hello already completed");
+    const selected = params.protocol === undefined ? "wss/1" : params.protocol;
+    if (!protocol.SUPPORTED_PROTOCOLS.includes(selected)) {
+      throw new MethodError(ERROR_CODES.UNSUPPORTED_PROTOCOL, "unsupported protocol", { supported: protocol.SUPPORTED_PROTOCOLS });
     }
+    const identity = await getIdentity();
+    if (params.network && params.network !== identity.network) {
+      throw new MethodError(ERROR_CODES.INVALID_PARAMS, "network mismatch");
+    }
+    // Reserve the handshake before any subsequent awaits.
+    if (session.helloDone) throw new MethodError(ERROR_CODES.INVALID_PARAMS, "hello already completed");
+    session.protocol = selected;
     session.helloDone = true;
+    sessionMod.negotiated(selected);
     session.client = params && typeof params.client === "string" ? params.client : null;
     session.clientVersion =
       params && typeof params.version === "string" ? params.version : null;
@@ -213,10 +229,13 @@ const handlers = {
 
     return {
       server: "neurai-wallet-services",
-      protocol: protocol.VERSION,
-      protocol_min: protocol.VERSION,
+      protocol: selected,
+      exact_amounts: selected === "wss/2",
+      amounts: selected === "wss/2" ? "string-sats" : "number-sats",
+      asset_mempool: false,
+      ...identity,
+      protocol_min: "wss/1",
       protocol_max: protocol.VERSION,
-      network: session.network,
       tip_height: tipHeight,
       tip_hash: tipHash,
       syncing: sync.syncing,
@@ -237,11 +256,11 @@ const handlers = {
     const address = params.address;
     const assetsFilter = parseAssetsFilter(params.assets);
 
-    if (session.subs.size >= ctx.config.max_subscriptions_per_session) {
+    if (!session.subs.has(address) && session.subs.size >= ctx.config.max_subscriptions_per_session) {
       throw new MethodError(ERROR_CODES.TOO_MANY_SUBS, "max subscriptions per session reached");
     }
 
-    const val = await callRPC("validateaddress", [address]).catch(() => null);
+    const val = await callRPC("validateaddress", [address]);
     if (!val || val.isvalid !== true) {
       throw new MethodError(ERROR_CODES.INVALID_PARAMS, "invalid address");
     }
@@ -281,7 +300,7 @@ const handlers = {
     if (!params || typeof params.address !== "string") {
       throw new MethodError(ERROR_CODES.INVALID_PARAMS, "address required");
     }
-    subscriptions.unsubscribe(params.address, session);
+    subscriptions.unsubscribe(params && params.address, session);
     return true;
   },
 
@@ -309,7 +328,7 @@ const handlers = {
         `batch too large (got ${addresses.length}, max ${MAX_BATCH})`,
       );
     }
-    if (session.subs.size + addresses.length > ctx.config.max_subscriptions_per_session) {
+    if (new Set([...session.subs, ...addresses]).size > ctx.config.max_subscriptions_per_session) {
       throw new MethodError(
         ERROR_CODES.TOO_MANY_SUBS,
         "batch would exceed max subscriptions per session",
@@ -331,48 +350,15 @@ const handlers = {
       }
     }
 
-    const results = await Promise.all(
-      addresses.map(async (address) => {
-        if (typeof address !== "string" || address.length === 0) {
-          return {
-            address: typeof address === "string" ? address : null,
-            error: { code: ERROR_CODES.INVALID_PARAMS, message: "invalid address" },
-          };
-        }
-        try {
-          const val = await callRPC("validateaddress", [address]).catch(() => null);
-          if (!val || val.isvalid !== true) {
-            return {
-              address,
-              error: { code: ERROR_CODES.INVALID_PARAMS, message: "invalid address" },
-            };
-          }
-          subscriptions.subscribe(address, session);
-          if (!ctx.config.send_initial_state) {
-            return { address };
-          }
-          const state = await fetchAddressState(address);
-          chainState.setLastStatus(address, state.status);
-          const entry = {
-            address,
-            status: state.status,
-            balance: state.balance,
-            height,
-          };
-          const projectedAssets = projectAssets(state.assets || {}, assetsFilter);
-          if (projectedAssets !== null) entry.assets = projectedAssets;
-          return entry;
-        } catch (e) {
-          return {
-            address,
-            error: {
-              code: ERROR_CODES.INTERNAL_ERROR,
-              message: toClientError(e, "subscribe failed").message,
-            },
-          };
-        }
-      }),
-    );
+    const results = [];
+    for (const address of addresses) {
+      try {
+        results.push(await handlers["address.subscribe"](session, { address, assets: params.assets }, ctx));
+      } catch (e) {
+        results.push({ address: typeof address === "string" ? address : null,
+          error: { code: e.code || ERROR_CODES.INTERNAL_ERROR, message: toClientError(e, "subscribe failed").message } });
+      }
+    }
 
     return { results };
   },
@@ -412,7 +398,7 @@ const handlers = {
       params.assets !== undefined ? params.assets : params.asset,
     );
 
-    const val = await callRPC("validateaddress", [address]).catch(() => null);
+    const val = await callRPC("validateaddress", [address]);
     if (!val || val.isvalid !== true) {
       throw new MethodError(ERROR_CODES.INVALID_PARAMS, "invalid address");
     }
@@ -468,14 +454,8 @@ const handlers = {
         assetsFilter.kind === "none"
           ? { addresses: [address], start, end }
           : { addresses: [address], start, end, assetName: "*" };
-      let deltas = [];
-      try {
-        deltas = await callRPC("getaddressdeltas", [rpcParams]);
-        if (!Array.isArray(deltas)) deltas = [];
-      } catch (e) {
-        console.log("[methods] getaddressdeltas failed:", describeForLog(e));
-        deltas = [];
-      }
+      const rawDeltas = await callRPC("getaddressdeltas", [rpcParams]);
+      let deltas = normalizeRows(rawDeltas, false);
 
       // For list-mode, keep XNA + only the whitelisted asset names.
       if (assetsFilter.kind === "list") {
@@ -497,9 +477,9 @@ const handlers = {
           tx_index: d.blockindex,
           txid: d.txid,
           asset,
-          satoshis: 0,
+          satoshis: 0n,
         };
-        e.satoshis += typeof d.satoshis === "number" ? d.satoshis : 0;
+        e.satoshis += d.satoshis;
         agg.set(key, e);
       }
       let sorted = [...agg.values()].sort(
@@ -533,7 +513,7 @@ const handlers = {
 
     const mempool = (state.mempool || []).map((m) => ({
       txid: m.txid,
-      satoshis: typeof m.satoshis === "number" ? m.satoshis : 0,
+      satoshis: m.satoshis,
       prev_txid: m.prevtxid || null,
       prev_vout: typeof m.prevout === "number" ? m.prevout : null,
     }));
@@ -674,4 +654,25 @@ const handlers = {
   ...depin.handlers,
 };
 
+const operationTails = new WeakMap();
+for (const name of ["address.subscribe", "address.unsubscribe", "address.unsubscribe.bulk"]) {
+  const handler = handlers[name];
+  handlers[name] = (session, params, ctx) => {
+    const previous = operationTails.get(session) || Promise.resolve();
+    const operation = previous.catch(() => {}).then(async () => {
+      if (session.closed) throw new Error("Session closed");
+      const existed = session.subs.has(params && params.address);
+      try { return await handler(session, params, ctx); }
+      catch (error) {
+        if (name === "address.subscribe" && !existed) subscriptions.unsubscribe(params && params.address, session);
+        throw error;
+      } finally {
+        if (session.closed) subscriptions.unsubscribeAll(session);
+      }
+    });
+    operationTails.set(session, operation);
+    operation.finally(() => { if (operationTails.get(session) === operation) operationTails.delete(session); }).catch(() => {});
+    return operation;
+  };
+}
 module.exports = { handlers, MethodError, fetchAddressState };

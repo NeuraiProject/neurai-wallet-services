@@ -109,7 +109,7 @@ function create(rawCfg, globalConfig, injected = {}) {
         // Low priority shares the node-wide queue with WSS, whose work uses
         // the default priority and therefore jumps ahead of pending HTTP work.
         const promise = rpc(method, params, -1);
-        if (cache.shouldCache(method)) { cache.put(method, params, promise); promise.catch(() => cache.remove(method, params)); }
+        if (cache.shouldCache(method)) { cache.put(method, params, promise); promise.catch(() => cache.remove(method, params, promise)); }
         return promise;
       });
       if (req.aborted || res.destroyed) return;
@@ -137,7 +137,7 @@ function create(rawCfg, globalConfig, injected = {}) {
     result.queueSize = queue.size; result.numberOfRequests = numberOfRequests.toLocaleString(); result.methods = cache.getMethods(); result.nodes = nodeDeps.getNodes(); result.depinRateLimit = depinLimiter.stats();
     return result;
   }
-  const handleRequest = createHandler({ whitelist, getCache, settings: { heading: cfg.heading, environment: cfg.environment, endpoint: cfg.endpoint }, serveWww: cfg.serve_www, tryAccept, handleRpc });
+  const handleRequest = createHandler({ whitelist, getCache, settings: async () => ({ heading: cfg.heading, environment: cfg.environment, endpoint: cfg.endpoint, exact_amounts: true, amounts: "rpc-native-units", numeric_encoding: "safe-number-or-string", ...(await nodeDeps.getIdentity()) }), serveWww: cfg.serve_www, tryAccept, handleRpc });
   return { handleRequest, getStats, onBlock(hash) { if (hash && hash !== lastBlockHash) { lastBlockHash = hash; cache.clear(); } } };
 }
 

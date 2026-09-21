@@ -2,8 +2,8 @@
 // (RFC 7230 §3.2.6) — no "/". The application-level versioned name "wss/1"
 // is reported only inside the JSON `hello` message.
 const SUBPROTOCOL = "wss";
-const VERSION = "wss/1";
-const SUPPORTED_PROTOCOLS = [VERSION];
+const VERSION = "wss/2";
+const SUPPORTED_PROTOCOLS = ["wss/1", VERSION];
 
 const ERROR_CODES = {
   UNSUPPORTED_PROTOCOL: 1001,

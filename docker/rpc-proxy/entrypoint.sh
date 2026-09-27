@@ -6,6 +6,13 @@ set -eu
 : "${NEURAI_NODE_URL:=http://neuraid:19101}"
 : "${NEURAI_RPC_USER:=neurai}"
 : "${NEURAI_RPC_PASSWORD:=changeme}"
+# Chain identity of the node pool (root `network` / `genesis_hash` in
+# config.json). NEURAI_NETWORK = mainnet | testnet | regtest; with mainnet or
+# testnet and no NEURAI_EXPECTED_GENESIS the service uses the genesis published
+# by @neuraiproject/neurai-rpc. Both empty = no pin (the first healthy node
+# defines the chain); the supplied compose files set both.
+: "${NEURAI_NETWORK:=}"
+: "${NEURAI_EXPECTED_GENESIS:=}"
 # DePIN protocol 2 is served on the node's RPC port through NEURAI_NODE_URL.
 # The protocol 1 gateway settings no longer exist on the proxy side.
 if [ -n "${NEURAI_DEPIN_ENABLED:-}${NEURAI_DEPIN_URL:-}" ]; then
@@ -80,6 +87,8 @@ fi
 cat > /app/config.json <<EOF
 {
   "service_id": "${PROXY_SERVICE_ID}",
+  "network": "${NEURAI_NETWORK}",
+  "genesis_hash": "${NEURAI_EXPECTED_GENESIS}",
   "trusted_proxy_ips": ${PROXY_TRUSTED_PROXY_IPS_JSON},
   "depin": {
     "rate_limit": ${PROXY_DEPIN_RATE_LIMIT},

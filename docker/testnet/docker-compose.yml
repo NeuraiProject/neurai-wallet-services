@@ -13,6 +13,10 @@ services:
       dockerfile: Dockerfile
       args:
         BRANCH: "${NODE_BRANCH:-DePIN-Test}"
+        # Audited commit of NODE_BRANCH (reset testnet, genesis 0000008b…a021).
+        # Pinning it also forces Docker to rebuild instead of reusing a cached
+        # clone of the branch from before the reset.
+        SOURCE_COMMIT: "${NODE_SOURCE_COMMIT:-0fe5a74943210508ec3be34c78e0f9192b7fefec}"
     restart: unless-stopped
 
     logging:
@@ -76,6 +80,9 @@ services:
       # ── Data ─────────────────────────────────────────────────────────────
       NEURAI_DATADIR: "/data"
 
+    # The reset testnet node refuses a data directory from the previous
+    # testnet ("Incorrect or no genesis block found"). Nothing in it needs to
+    # be kept: remove the old volume once with `docker compose down -v`.
     volumes:
       - neurai_data_testnet:/data
 
@@ -107,6 +114,13 @@ services:
         max-file: "5"
 
     environment:
+      # Chain the service accepts. The reset testnet keeps the chain name,
+      # ports and address prefixes of the previous one, so the genesis hash is
+      # what rejects a node still on the old chain (hello and every method
+      # fail until a matching node is healthy). hello and GET /settings
+      # report it as genesis_hash.
+      NEURAI_NETWORK: "testnet"
+      NEURAI_EXPECTED_GENESIS: "0000008b384aeffecdab182575dc4e86c9f07f90318c65088532660ed9a8a021"
       NEURAI_NODE_NAME: "neuraid-testnet"
       NEURAI_NODE_URL: "http://neuraid:${NODE_RPC_PORT:-19101}"
       NEURAI_RPC_USER: "${NODE_RPC_USER:-neurai}"
@@ -166,6 +180,11 @@ services:
       PROXY_WSS_TLS_ENABLED: "false"
       PROXY_WSS_AUTOGEN_CERT: "false"
       PROXY_WSS_ZMQ_SEQUENCE_ENABLED: "false"
+      # From height 10 the reset testnet runs 30 s blocks and accepts reorgs
+      # up to 120 blocks deep (NIP-028), twice mainnet's 60. chain.reorg
+      # reports this depth and the in-memory block index keeps twice as many
+      # hashes.
+      PROXY_WSS_REORG_INVALIDATE_DEPTH: "120"
       # Optional local stats endpoint for ops/monitoring. When enabled, exposes
       # GET http://127.0.0.1:<port>/stats with sessions/subs/tip/zmq/queue.
       # Always loopback-only (unauthenticated); never publish the port.

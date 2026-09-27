@@ -15,12 +15,16 @@ services:
       # Match the rpc-proxy TLS setting above: "ws" when TLS_ENABLED=false, "wss" when true.
       PROXY_SCHEME: "ws"
       PROXY_TOKEN: "${PROXY_WSS_AUTH_TOKEN:-testnet-wss-token-do-not-use-in-production}"
-      # Set TEST_ADDRESS to a valid Neurai testnet address to also exercise the happy-path subscribe.
-      # PQ (ML-DSA-44) testnet address with XNA balance and PQTR asset holdings.
-      TEST_ADDRESS: "tnq1pxw7z3j5kkl8v6nez9mfstl4lzmuu7qu2fwwg4pl8qs52v5m4ev2qjut73j"
-      # Set these to exercise the asset code paths against a real address holding assets.
-      TEST_ASSET_ADDRESS: "tnq1pxw7z3j5kkl8v6nez9mfstl4lzmuu7qu2fwwg4pl8qs52v5m4ev2qjut73j"
-      TEST_ASSET_NAME: "PQTR"
+      # hello must report this genesis: the suite fails if the stack is still
+      # serving the testnet from before the reset. Empty = skip the check.
+      EXPECTED_GENESIS: "${TEST_EXPECTED_GENESIS-0000008b384aeffecdab182575dc4e86c9f07f90318c65088532660ed9a8a021}"
+      # Optional funded addresses on the reset testnet (set them in .env).
+      # Valid formats: t… (legacy), tnc1p… (AuthScript v1), tpq1z… (PQ v2),
+      # tnq1r… (ECDSA v3). Empty values skip the happy-path address and asset
+      # tests.
+      TEST_ADDRESS: "${TEST_ADDRESS:-}"
+      TEST_ASSET_ADDRESS: "${TEST_ASSET_ADDRESS:-}"
+      TEST_ASSET_NAME: "${TEST_ASSET_NAME:-}"
       BURST_SIZE: "80"
       BURST_LIMIT: "50"
     depends_on:

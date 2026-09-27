@@ -28,6 +28,12 @@ const rejected = [
   ["dumpextkeypq", "post-quantum key material"],
   ["exportxpqpub", "post-quantum key material"],
   ["signmessagewithprivkey", "clients sign locally"],
+  ["opendepin", "DePIN transfer state: owner-only wallet write"],
+  ["closedepin", "DePIN transfer state: owner-only wallet write"],
+  ["sealdepin", "DePIN transfer state: owner-only wallet write"],
+  ["walletpassphrase", "unlocks the node wallet"],
+  ["walletlock", "node wallet control"],
+  ["getblockdeltas", "heavy per-block address deltas"],
 ];
 
 test.each(exposed)("%s is whitelisted", (method) => {

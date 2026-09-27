@@ -45,6 +45,12 @@ function validateConfig(cfg) {
 }
 
 function fillDefaults(cfg) {
+  // Reorg detection walks back at most reorg_invalidate_depth blocks and needs
+  // our hash for every height it visits, so the in-memory block index must
+  // cover that window. Mainnet (and the reset testnet before height 10) caps
+  // reorgs at 60 blocks; the reset testnet caps them at 120 from height 10
+  // (NIP-028, 30 s blocks). Keep twice the depth, never fewer than 120.
+  const reorgInvalidateDepth = cfg.reorg_invalidate_depth || 60;
   return {
     enabled: cfg.enabled === true,
     host: cfg.host || "0.0.0.0",
@@ -63,7 +69,8 @@ function fillDefaults(cfg) {
     history_page_limit: cfg.history_page_limit || 100,
     utxo_page_limit: cfg.utxo_page_limit || 1000,
     bulk_subscribe_limit: cfg.bulk_subscribe_limit || 200,
-    reorg_invalidate_depth: cfg.reorg_invalidate_depth || 60,
+    reorg_invalidate_depth: reorgInvalidateDepth,
+    block_index_size: Math.max(cfg.block_index_size || 0, 120, 2 * reorgInvalidateDepth),
     keepalive_interval_ms: cfg.keepalive_interval_ms || 25000,
     keepalive_timeout_ms: cfg.keepalive_timeout_ms || 10000,
     send_initial_state: cfg.send_initial_state !== false,
@@ -113,4 +120,4 @@ function getStats() {
   };
 }
 
-module.exports = { start, getStats };
+module.exports = { start, getStats, fillDefaults };

@@ -4,6 +4,14 @@
 const SUBPROTOCOL = "wss";
 const VERSION = "wss/2";
 const SUPPORTED_PROTOCOLS = ["wss/1", VERSION];
+// wss/1 is kept only so released wallet builds keep working, and will be
+// retired: it sends amounts as JS numbers (lossy above 2^53), has no rpc.call
+// and gets no address.sync_status. New clients must use wss/2. It is still
+// the default when hello omits `protocol`, as in 1.1.1; retiring it will make
+// wss/2 the default.
+const DEPRECATED_PROTOCOLS = {
+  "wss/1": "wss/1 is deprecated and will be retired: amounts are JS numbers (lossy above 2^53); use wss/2",
+};
 
 const ERROR_CODES = {
   UNSUPPORTED_PROTOCOL: 1001,
@@ -62,6 +70,7 @@ module.exports = {
   SUBPROTOCOL,
   VERSION,
   SUPPORTED_PROTOCOLS,
+  DEPRECATED_PROTOCOLS,
   ERROR_CODES,
   WS_CLOSE_CODES,
   makeResponse,

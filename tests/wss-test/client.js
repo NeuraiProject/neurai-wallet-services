@@ -10,12 +10,15 @@ const TOKEN =
 const TEST_ADDRESS = process.env.TEST_ADDRESS || null;
 const TEST_ASSET_ADDRESS = process.env.TEST_ASSET_ADDRESS || null;
 const TEST_ASSET_NAME = process.env.TEST_ASSET_NAME || null;
+// Genesis the stack must serve (the reset testnet shares chain name, ports and
+// prefixes with the previous one). Unset = no chain identity check.
+const EXPECTED_GENESIS = (process.env.EXPECTED_GENESIS || "").toLowerCase() || null;
 const BURST_SIZE = Number(process.env.BURST_SIZE || 80);
 const BURST_LIMIT = Number(process.env.BURST_LIMIT || 50);
 
 const URL = `${SCHEME}://${HOST}:${PORT}${PATH}`;
 const SUBPROTOCOL = "wss";
-const PROTOCOL_VERSION = "wss/1";
+const PROTOCOL_VERSION = "wss/2";
 
 let passed = 0;
 let failed = 0;
@@ -29,6 +32,11 @@ function fail(name, reason) {
   console.log(`  FAIL ${name}: ${reason}`);
   failed++;
   failures.push({ name, reason });
+}
+
+// wss/2 amounts are canonical integer strings of raw units.
+function isRawAmount(value) {
+  return typeof value === "string" && /^(0|-?[1-9][0-9]*)$/.test(value);
 }
 
 function delay(ms) {
@@ -180,6 +188,11 @@ async function testHello() {
     ok(
       `hello returns protocol=${r.result.protocol} tip_height=${r.result.tip_height}`,
     );
+    if (EXPECTED_GENESIS) {
+      if (r.result.genesis_hash !== EXPECTED_GENESIS)
+        return fail("hello: genesis_hash", `expected ${EXPECTED_GENESIS}, got ${r.result.genesis_hash}`);
+      ok(`hello reports the expected genesis ${EXPECTED_GENESIS.slice(0, 16)}...`);
+    }
   } finally {
     try { res.ws.close(); } catch {}
   }
@@ -196,6 +209,21 @@ async function testHelloUnsupportedProtocol() {
     });
     if (r.error && r.error.code === 1001) ok("hello rejects unsupported protocol (1001)");
     else fail("hello unsupported protocol", JSON.stringify(r));
+  } finally {
+    try { res.ws.terminate(); } catch {}
+  }
+}
+
+async function testHelloLegacyProtocol() {
+  // wss/1 stays available for released wallets: numeric amounts, marked deprecated.
+  const res = await connect();
+  if (res.status !== "open") return fail("hello wss/1: open", `status=${res.status}`);
+  try {
+    const r = await rpc(res.ws, { id: 201, method: "hello", params: { protocol: "wss/1" } });
+    const h = r.result;
+    if (h && h.protocol === "wss/1" && h.exact_amounts === false && typeof h.deprecated === "string")
+      ok("hello still accepts the deprecated wss/1 (exact_amounts=false, deprecated notice)");
+    else fail("hello legacy wss/1", JSON.stringify(r));
   } finally {
     try { res.ws.terminate(); } catch {}
   }
@@ -275,7 +303,7 @@ async function testValidAddressSubscribe() {
     if (!r.result) return fail("valid address: result", JSON.stringify(r));
     if (typeof r.result.status !== "string")
       return fail("valid address: status type", JSON.stringify(r.result));
-    if (!r.result.balance || typeof r.result.balance.confirmed !== "number")
+    if (!r.result.balance || !isRawAmount(r.result.balance.confirmed))
       return fail("valid address: balance", JSON.stringify(r.result));
     ok(
       `address.subscribe(${TEST_ADDRESS}) status=${r.result.status.slice(0, 12)}... confirmed=${r.result.balance.confirmed}`,
@@ -425,7 +453,7 @@ async function testGetStateValid() {
     if (!r.result) return fail("get_state result", JSON.stringify(r));
     const res = r.result;
     if (typeof res.status !== "string") return fail("get_state status type", JSON.stringify(res));
-    if (!res.balance || typeof res.balance.confirmed !== "number")
+    if (!res.balance || !isRawAmount(res.balance.confirmed))
       return fail("get_state balance", JSON.stringify(res));
     if (!Array.isArray(res.history)) return fail("get_state history not array", JSON.stringify(res));
     if (!Array.isArray(res.utxos)) return fail("get_state utxos not array", JSON.stringify(res));
@@ -720,7 +748,7 @@ async function testWsPingRoundtrip() {
     await rpc(res.ws, {
       id: 880,
       method: "hello",
-      params: { protocol: "wss/1", client: "wss-test" },
+      params: { protocol: PROTOCOL_VERSION, client: "wss-test" },
     });
     const got = await new Promise((resolve) => {
       const t = setTimeout(() => resolve(false), 3000);
@@ -744,7 +772,7 @@ async function testKeepaliveDoesntKillIdle() {
     await rpc(res.ws, {
       id: 881,
       method: "hello",
-      params: { protocol: "wss/1", client: "wss-test" },
+      params: { protocol: PROTOCOL_VERSION, client: "wss-test" },
     });
     await delay(IDLE_MS);
     if (closed) return fail("keepalive idle", `connection closed during ${IDLE_MS}ms idle`);
@@ -796,6 +824,7 @@ async function testBurst() {
   await test404Path();
   await testHello();
   await testHelloUnsupportedProtocol();
+  await testHelloLegacyProtocol();
   await testPing();
   await testHelloRequiredForSubscribe();
   await testInvalidAddress();

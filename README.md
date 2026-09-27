@@ -71,7 +71,8 @@ POST-only route answers `GET` with `405` and `Allow: POST`.
 - ZMQ subscriber to the Neurai node (`hashblock` + `rawtx`) with polling
   fallback. Real-time `address.changed` / `chain.tip` / `chain.reorg` events.
 - Deterministic reorg detection backed by an in-memory `Map<height, hash>`
-  of the last 120 blocks, pre-populated at startup from the chain.
+  of the last `max(120, 2 × reorg_invalidate_depth)` blocks (120 on mainnet,
+  240 on the reset testnet), pre-populated at startup from the chain.
 - Node-health monitoring: a 10s poll of `getblockchaininfo` gates methods
   that depend on a synced chain and emits `node.synced` / `node.syncing`
   on transitions.
@@ -102,7 +103,15 @@ Pending: per-block "candidate addresses" refresh (optional improvement).
 ## Protocol overview
 
 Wire-level subprotocol identifier: `wss`.
-Application-level version (reported in `hello`): `wss/1`.
+Application-level version (reported in `hello`): `wss/2`. New clients must
+ask for it explicitly.
+
+`wss/1` is **deprecated** and kept only so released wallet builds keep
+working; it will be retired. It sends amounts as JS numbers (lossy above 2^53
+raw units, about 90,071,992.55 XNA or asset units), has no `rpc.call` and gets
+no `address.sync_status`. It is still the default when `hello` omits
+`protocol`, and its `hello` carries a `deprecated` notice. Retiring it will
+make `wss/2` the default and refuse `wss/1` with `1001`.
 
 ### Handshake
 
@@ -110,15 +119,19 @@ Application-level version (reported in `hello`): `wss/1`.
 // client → server (over WSS, after a 101 upgrade)
 { "id": 1, "method": "hello",
   "params": { "client": "my-wallet", "version": "0.1.0",
-              "network": "mainnet", "protocol": "wss/1" } }
+              "network": "mainnet", "protocol": "wss/2" } }
 
 // server → client
 { "id": 1, "result": {
     "server": "neurai-wallet-services",
-    "protocol": "wss/1",
+    "protocol": "wss/2",
+    "exact_amounts": true,
+    "amounts": "string-sats",
     "protocol_min": "wss/1",
-    "protocol_max": "wss/1",
+    "protocol_max": "wss/2",
     "network": "mainnet",
+    "genesis_hash": "00000044d33c0c0ba019be5c0249730424a69cb4c222153322f68c6104484806",
+    "service_id": "neurai-mainnet-wallet-service",
     "tip_height": 75880,
     "tip_hash": "000048f1998e6f45...",
     "syncing": false,
@@ -129,6 +142,14 @@ Application-level version (reported in `hello`): `wss/1`.
 ```
 
 `syncing` and friends let the wallet show a progress UI before subscribing.
+With `wss/2` every amount in address messages (`balance`, `assets`,
+`history`, `utxos`, `asset_utxos`, `mempool`) is a canonical integer string
+of raw units (`"100000000"` = 1 XNA or 1 asset unit), including `"0"`, small
+values and negative deltas; parse them as `BigInt`. The examples below use
+`wss/2`; the deprecated `wss/1` sends the same fields as JS numbers.
+`network` and `genesis_hash` are read from the node, never from the client.
+`genesis_hash` is what identifies the chain: every Neurai testnet reports
+`network: "testnet"`.
 
 ### Methods
 
@@ -170,6 +191,17 @@ DePIN node errors arrive as `1005` with the node's `message` and its JSON-RPC
 `code: null`. Over the per-IP quota (see below) the answer is `1007` with
 `retry_after_seconds`.
 
+#### Address types
+
+`address.*` methods accept every address the node validates (the check is
+the node's `validateaddress`, and its address index covers all of them):
+legacy P2PKH (`N…`/`t…`), generic AuthScript witness v1 (`nc1p…`/`tnc1p…`),
+post-quantum witness v2 (`pq1z…`/`tpq1z…`) and strict ECDSA witness v3
+(`nq1r…`/`tnq1r…`). The node accepts only those HRP/version pairs, so a
+`tnq1p…` address (HRP `tnq` with witness v1) is `invalid address` (`1003`). Nodes that predate these address types report them as invalid.
+DePIN messaging works with legacy P2PKH addresses only; `getpubkey` also
+answers for AuthScript v1 and rejects v2/v3.
+
 #### `address.get_state` and pagination
 
 `address.get_state` returns the full per-address snapshot the wallet needs
@@ -180,7 +212,7 @@ History is **always paginated** using a composite opaque cursor (`height:tx_inde
 // request
 { "id": 4, "method": "address.get_state",
   "params": {
-    "address": "tnq1p9tdg76plsuss5lguphhm76t0faf2hy8vmefrq39ctsk0t5fqygzsz2dm40",
+    "address": "tnq1r0c9zl485wv7wcfutxfyv8k2ltpfk5hdyp3s7g4chlphx8d2m6npqwxvjya",
     "include_history": true,
     "include_utxos": true,
     "limit": 100,
@@ -191,10 +223,10 @@ History is **always paginated** using a composite opaque cursor (`height:tx_inde
 { "id": 4, "result": {
     "address": "...",
     "status": "d9385809c15265e9...",
-    "balance": { "confirmed": 500000000000, "unconfirmed": 0 },
-    "mempool": [ { "txid": "...", "satoshis": 100000, "prev_txid": null, "prev_vout": null } ],
-    "history": [ { "txid": "471e4d...", "height": 75841, "tx_index": 1, "asset": "XNA", "satoshis": 500000000000 } ],
-    "utxos":   [ { "txid": "...", "vout": 0, "satoshis": 500000000000, "height": 75841 } ],
+    "balance": { "confirmed": "500000000000", "unconfirmed": "0" },
+    "mempool": [ { "txid": "...", "satoshis": "100000", "prev_txid": null, "prev_vout": null } ],
+    "history": [ { "txid": "471e4d...", "height": 75841, "tx_index": 1, "asset": "XNA", "satoshis": "500000000000" } ],
+    "utxos":   [ { "txid": "...", "vout": 0, "satoshis": "500000000000", "height": 75841 } ],
     "page":      { "cursor": null, "limit": 100, "has_more": true, "next_cursor": "75900:3:XNA" },
     "utxo_page": { "cursor": null, "limit": 100, "has_more": false, "next_cursor": null }
   } }
@@ -248,15 +280,15 @@ When `assets` is set, the response gains:
 // address.subscribe / address.subscribe.bulk[i]
 { "address": "...", "status": "...", "balance": {...}, "height": 75900,
   "assets": {
-    "TRON":  { "confirmed": 100700000000, "unconfirmed": 0 },
-    "TRON!": { "confirmed": 100000000,    "unconfirmed": 0 }
+    "TRON":  { "confirmed": "100700000000", "unconfirmed": "0" },
+    "TRON!": { "confirmed": "100000000",    "unconfirmed": "0" }
   } }
 
 // address.get_state additionally returns:
 { "...": "...",
   "assets": { "TRON": {...}, ... },
   "asset_utxos": [
-    { "txid": "...", "vout": 1, "satoshis": 42000000000, "height": 13973, "asset": "TRON" }
+    { "txid": "...", "vout": 1, "satoshis": "42000000000", "height": 13973, "asset": "TRON" }
   ] }
 ```
 
@@ -386,11 +418,11 @@ event-driven — events can interleave with normal request/response.
 ```json
 { "method": "address.changed",
   "params": {
-    "address": "tnq1p9tdg76plsuss5lguphhm76t0faf2hy8vmefrq39ctsk0t5fqygzsz2dm40",
+    "address": "tnq1r0c9zl485wv7wcfutxfyv8k2ltpfk5hdyp3s7g4chlphx8d2m6npqwxvjya",
     "status": "d9385809c15265e9...",
     "reason": "block",
     "height": 75841,
-    "balance": { "confirmed": 500000000000, "unconfirmed": 0 },
+    "balance": { "confirmed": "500000000000", "unconfirmed": "0" },
     "delta": {
       "added_txids": ["471e4da0ee1ded98ec8e6c20840763dcae7fd8151fab95f9d05c33c9c69bd5dd"],
       "confirmed_txids": [],
@@ -546,9 +578,10 @@ docker compose -f docker/testnet/docker-compose.yml -f tests/docker-compose.yml 
 
 `.env` holds what changes per deployment or is secret: RPC credentials and
 port (one value feeds both the node and the proxy's upstream URL), the node
-branch/image tag, the WSS auth token, the published port and bind interface,
-the public HTTP endpoint, `PROXY_TRUSTED_PROXIES`, the `depin*` quota and, on
-testnet, the DePIN pool token and wallet. Everything structural (indexes, ZMQ
+branch and source commit (testnet) or image tag (mainnet), the WSS auth token,
+the published port and bind interface, the public HTTP endpoint,
+`PROXY_TRUSTED_PROXIES`, the `depin*` quota and, on testnet, the DePIN pool
+token and wallet. Everything structural (indexes, ZMQ
 wiring, paths, healthchecks) stays in the compose file. Every variable has the
 same default in `.env.example` and in the compose file, so a stack starts
 without a `.env`; the template is what gets updated when a variable appears.
@@ -565,7 +598,9 @@ Defaults (all overridable in `.env`):
 - Testnet auth token: `testnet-wss-token-do-not-use-in-production`.
   Mainnet ships with a `CHANGE-ME-mainnet-wss-token` placeholder —
   set `PROXY_WSS_AUTH_TOKEN` in `.env` before any internet-facing run.
-- Testnet builds the node's `DePIN-Test` branch with DePIN protocol 2 enabled
+- Testnet builds the node's `DePIN-Test` branch at `NODE_SOURCE_COMMIT`
+  (default `0fe5a74943210508ec3be34c78e0f9192b7fefec`, the audited reset-testnet
+  node) with DePIN protocol 2 enabled
   (`NEURAI_DEPIN_ENABLED=1`, `NEURAI_DEPIN_TOKEN`, wallet on); the proxy
   relays `depin*` through the RPC port with `PROXY_DEPIN_RATE_LIMIT=60` /
   `PROXY_DEPIN_BAN_MINUTES=10`. Mainnet runs the official `v1.0.6` image,
@@ -574,6 +609,19 @@ Defaults (all overridable in `.env`):
   the Docker network. The `zeromq` npm package is in `optionalDependencies`;
   if it can't install (rare, glibc x64 has prebuilt binaries), the proxy
   falls back to pure-polling and logs the reason.
+
+- Each proxy is pinned to its chain: `NEURAI_NETWORK` and
+  `NEURAI_EXPECTED_GENESIS` in the compose file become the root `network` and
+  `genesis_hash` of the generated `config.json`. A node with another genesis
+  is never used; `GET /getCache` lists it with `healthError: "unexpected
+  genesis …"`. Testnet also sets `PROXY_WSS_REORG_INVALIDATE_DEPTH=120` (see
+  [1.2.0](#120-reset-testnet)).
+- The node image records its source: `docker image inspect` shows the
+  `org.opencontainers.image.revision` label, and
+  `docker compose exec neuraid cat /usr/local/share/neurai/source-commit`
+  prints the full SHA it was built from. `neuraid -version` shows the short
+  SHA with a `-dirty` suffix because `autogen.sh` regenerates build files that
+  the node repository tracks; that suffix does not mean modified sources.
 
 ## Deployment behind HestiaCP (or any nginx)
 
@@ -642,6 +690,7 @@ self-signed cert in-container at startup.
 ├── index.js                  # entry point — validates root config, boots http + wss
 ├── getConfig.js              # config loader
 ├── getRPCNode.js             # Neurai node selection / health checks
+├── service-identity.js       # node chain identity (network + genesis) and the expected-chain pin
 ├── rpcError.js               # normalizes @neuraiproject/neurai-rpc rejections
 ├── clientIp.js               # trusted_proxy_ips + X-Forwarded-For (HTTP and WSS)
 ├── depinRateLimit.js         # per-IP depin* quota shared by HTTP and WSS
@@ -686,13 +735,20 @@ npm test                                                          # unit tests
 docker compose -f docker/testnet/docker-compose.yml -f tests/docker-compose.yml --profile test run --rm wss-test   # E2E
 ```
 
+The E2E suite checks that `hello` reports the reset-testnet genesis
+(`TEST_EXPECTED_GENESIS`, empty to skip). The happy-path address and asset
+tests need funded addresses on the reset testnet: set `TEST_ADDRESS`,
+`TEST_ASSET_ADDRESS` and `TEST_ASSET_NAME` in `docker/testnet/.env`; they are
+skipped while empty.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
 
 ## 1.1.1: exact amounts and paired wallet transports
 
-The service uses `@neuraiproject/neurai-rpc` **0.6.1** and `lossless-json`
+The service uses `@neuraiproject/neurai-rpc` (**0.6.1** in 1.1.1, **0.7.0**
+since [1.2.0](#120-reset-testnet)) and `lossless-json`
 with a locked dependency tree. Address balances, UTXOs, history and mempool
 are normalized and summed as `bigint`. Missing/invalid monetary data or an
 upstream failure returns an error instead of a fabricated zero balance.
@@ -706,8 +762,9 @@ Send `hello` with `protocol: "wss/2"` for `exact_amounts: true` and
 get_state and address.changed are canonical integer strings, including zero
 and negative deltas. Heights, indices, IDs and error codes keep their types.
 Omitting the version selects `wss/1`, which deliberately converts amounts to
-numbers and advertises `exact_amounts: false`. Unknown versions get application
-error 1001, then WebSocket close 1002. A second hello cannot change the session.
+numbers and advertises `exact_amounts: false` (deprecated since
+[1.2.0](#120-reset-testnet)). Unknown versions get application error 1001,
+then WebSocket close 1002. A second hello cannot change the session.
 A small legacy result does not prove that its upstream arithmetic was exact.
 
 `POST /rpc` preserves numeric parameter tokens, including nested decimals and
@@ -743,7 +800,8 @@ Recovery emits `stale: false, reason: "recovered"` even if the monetary hash is
 unchanged. Clients keep their previous data visibly stale until recovery.
 Unsubscribing the last client cancels pending retries. Session statistics now
 include active and cumulative negotiations by version, unsafe v1 amount
-conversions (both signs), and encoding/send failures.
+conversions (both signs), and encoding/send failures. Watch `negotiations`
+and `unsafe_v1_amounts` to decide when `wss/1` can be retired.
 
 The Docker proxy now builds the **local repository** with `npm ci --omit=dev`:
 
@@ -776,5 +834,68 @@ No HTTP server is required (`http.enabled: false` is supported).
 
 Deploy this service extension before the WSS-only mobile client. Older services
 can still provide balances, but clients must refuse unavailable construction
-methods rather than contact an unrelated HTTP RPC. Existing v1 clients are
-unchanged. This transport change does not activate PQ on mainnet.
+methods rather than contact an unrelated HTTP RPC. Existing v1 clients were
+unchanged in 1.1.1. This transport change does not activate PQ on mainnet.
+
+## 1.2.0: reset testnet
+
+Neurai reset its testnet on 2026-09-26 (node `DePIN-Test`, commit
+`0fe5a74943210508ec3be34c78e0f9192b7fefec`). The new chain keeps the chain
+name `test`, ports `19100`/`19101`, magic and address prefixes of the previous
+one; its genesis is
+`0000008b384aeffecdab182575dc4e86c9f07f90318c65088532660ed9a8a021`. From
+height 10 blocks come every 30 s, reorgs may reach 120 blocks (NIP-028), the
+asset marker switches from `rvn` to `xna` and the three AuthScript families
+(v1 generic, v2 PQ, v3 ECDSA) activate. Mainnet is unchanged.
+
+What changed in the service:
+
+- `@neuraiproject/neurai-rpc` **0.7.0**. It exports `MAINNET_GENESIS_HASH` and
+  `TESTNET_GENESIS_HASH`.
+- Chain pin: root `network: "mainnet"` or `"testnet"` now also pins the
+  genesis published by neurai-rpc, unless `genesis_hash` overrides it. A node
+  on another chain (for example one not rebuilt for the reset) is excluded
+  and, with no other node, every request fails instead of serving the wrong
+  chain. A malformed `network` or
+  `genesis_hash` aborts the start. Regtest needs an explicit `genesis_hash`,
+  and with neither key set the first healthy node still defines the chain (a
+  warning is logged). Excluded nodes carry a `healthError` in `GET /getCache`
+  and on the statistics page, and each exclusion is logged once.
+- Reorg window: the block index keeps `max(120, 2 × reorg_invalidate_depth)`
+  hashes (it was fixed at 120, and `block_index_size` had no effect). Set
+  `reorg_invalidate_depth: 120` on the reset testnet, as `config.example.json`
+  and the testnet compose do; keep 60 on mainnet.
+- Docker: the testnet node is built at `NODE_SOURCE_COMMIT`, and both
+  compose files pin network and genesis (see
+  [Running locally](#running-locally-docker)). Without the commit pin, a
+  rebuild could reuse a cached clone of `DePIN-Test` from before the reset.
+  When a source host is down, `depends/` now falls back to
+  `bitcoincore.org/depends-sources` and still checks each file's pinned
+  sha256. samba.org, the only source of `ccache-3.3.4`, was unreachable and
+  broke the build.
+- **`wss/1` deprecated.** It works exactly as in 1.1.1 so released wallets
+  keep connecting, and its `hello` now includes a `deprecated` notice. New and
+  updated clients must use `wss/2`: exact string amounts, `rpc.call` and
+  `address.sync_status`. `wss/1` will be retired in a later release, once
+  `negotiations` shows no `wss/1` sessions; the default for a `hello` without
+  `protocol` will then become `wss/2`.
+- The HTTP whitelist documents the new node RPCs (`getblockdeltas`,
+  `opendepin`/`closedepin`/`sealdepin`, PQ wallet commands, wallet
+  passphrase commands); none of them is exposed.
+
+**Deploying.** The reset testnet is a new chain with no users to carry over,
+so the node starts on an empty volume. A data directory from the previous
+testnet is refused ("Incorrect or no genesis block found") and holds nothing
+worth keeping; this service keeps no state on disk.
+
+```sh
+docker compose -f docker/testnet/docker-compose.yml down -v   # deletes the old node volume
+docker compose -f docker/testnet/docker-compose.yml up -d --build
+```
+
+The node creates a fresh dedicated wallet and, from it, a new DePIN pool key
+that clients pin on first use; back that wallet up from now on (see
+`NEURAI_DEPIN_WALLET`). Before routing traffic, check on the node itself that
+`neurai-cli -datadir=/data getblockhash 0` prints the genesis above and that
+`/usr/local/share/neurai/source-commit` matches `NODE_SOURCE_COMMIT`.
+`getnetworkinfo` is not exposed through the service.

@@ -93,6 +93,8 @@ test.each([undefined, 'wss/1', 'wss/2'])('negotiates %s and cannot renegotiate',
   const result = await handlers.hello(client, { protocol, network: 'testnet' });
   expect(result.protocol).toBe(protocol || 'wss/1');
   expect(result.exact_amounts).toBe(protocol === 'wss/2');
+  if (protocol === 'wss/2') expect(result).not.toHaveProperty('deprecated');
+  else expect(result.deprecated).toMatch(/deprecated.*use wss\/2/);
   await expect(handlers.hello(client, { protocol: 'wss/2' })).rejects.toThrow('already');
 });
 test('unsupported protocol and wrong network do not complete hello', async () => {

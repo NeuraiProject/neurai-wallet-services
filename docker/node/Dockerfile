@@ -44,15 +44,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /root
 
+# Exact commit of BRANCH to build (empty = branch head). Docker caches the
+# clone layer by its command text, so with only a branch name a rebuild keeps
+# serving whatever the branch pointed to the first time — for the reset testnet
+# that is a node with the previous genesis. The testnet compose pins the
+# audited commit through NODE_SOURCE_COMMIT; changing it invalidates the cache
+# from here on (declared late so the apt layer above stays cached).
+ARG SOURCE_COMMIT=
+
 RUN git clone --branch ${BRANCH} --single-branch \
-    https://github.com/NeuraiProject/Neurai.git
+    https://github.com/NeuraiProject/Neurai.git \
+ && if [ -n "${SOURCE_COMMIT}" ]; then git -C Neurai checkout --detach "${SOURCE_COMMIT}"; fi \
+ && git -C Neurai rev-parse HEAD > /root/neurai-source-commit \
+ && echo "Building Neurai ${BRANCH} at $(cat /root/neurai-source-commit)"
 
 WORKDIR /root/Neurai/depends
 
 # NO_QT=1 — skip building Qt and its transitive deps in depends/. Saves
 # ~30-50 min off the build. ZMQ is still built by depends/ as usual and
 # linked statically into neuraid.
-RUN make HOST=x86_64-pc-linux-gnu NO_QT=1 -j$(nproc)
+# FALLBACK_DOWNLOAD_PATH — depends tries each package's own URL first and uses
+# this mirror only when that fails; every file is still checked against the
+# sha256 pinned in depends/packages. Needed in practice for ccache-3.3.4, whose
+# only source (samba.org) has been unreachable and aborted the build.
+RUN make HOST=x86_64-pc-linux-gnu NO_QT=1 \
+      FALLBACK_DOWNLOAD_PATH=https://bitcoincore.org/depends-sources \
+      -j$(nproc)
 
 WORKDIR /root/Neurai
 
@@ -83,8 +100,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
+ARG BRANCH=DePIN-Test
+ARG SOURCE_COMMIT=
+# Lets an operator check which source a running node was built from without
+# trusting the tag: `docker image inspect` (labels) or, inside the container,
+# `cat /usr/local/share/neurai/source-commit` (resolved full SHA).
+LABEL org.opencontainers.image.source="https://github.com/NeuraiProject/Neurai" \
+      org.opencontainers.image.ref.name="${BRANCH}" \
+      org.opencontainers.image.revision="${SOURCE_COMMIT}"
+
 COPY --from=builder /root/Neurai/src/neuraid     /usr/local/bin/neuraid
 COPY --from=builder /root/Neurai/src/neurai-cli  /usr/local/bin/neurai-cli
+COPY --from=builder /root/neurai-source-commit   /usr/local/share/neurai/source-commit
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 
 RUN chmod +x /usr/local/bin/entrypoint.sh

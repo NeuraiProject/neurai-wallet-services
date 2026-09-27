@@ -29,6 +29,7 @@ const whitelist = [
   "getblock",
   "getblockchaininfo",
   "getblockcount",
+  //"getblockdeltas", // per-block address deltas: heavy on large blocks, not needed by wallets
   "getblockhash",
   // "getblockhashes", //This can kill the service if you ask for all block hashes years back
   "getblockheader",
@@ -148,17 +149,21 @@ const whitelist = [
   //"createmultisig",
   "estimatefee",
   "estimatesmartfee",
-  "validateaddress",
+  //"signmessagewithprivkey", // takes a private key: clients sign locally
+  "validateaddress", // also reports AuthScript witness v1/v2/v3 fields (isauthscript, witness_version, family)
   "verifymessage",
 
   //== Depin asset (chain queries; cached per block) ==
   "getpubkey",
   "checkdepinvalidity",
+  //"closedepin",  // DePIN transfer state (open/close/seal): owner-only wallet writes
   //"freezedepin",
   "depingetancestorrecipients",
   "listdepinholders",
   "listdepinaddresses",
   //"listpqaddresses",   // lists the node wallet's PQ addresses
+  //"opendepin",
+  //"sealdepin",
   //"selfrevokedepin",
   //"unfreezedepin",
 
@@ -196,9 +201,11 @@ const whitelist = [
     "addwitnessaddress",
     "backupwallet",
     "bumpfee",
+    "dumpextkeypq",
     "dumpprivkey",
     "dumpwallet",
     "encryptwallet",
+    "exportxpqpub",
     "getaccount",
     "getaccountaddress",
     "getaddressesbyaccount",
@@ -222,6 +229,7 @@ const whitelist = [
     "listaccounts",
     "listaddressgroupings",
     "listlockunspent",
+    "listpqaddresses",
     "listreceivedbyaccount",
     "listreceivedbyaddress",
     "listsinceblock",
@@ -239,6 +247,9 @@ const whitelist = [
     "setaccount",
     "settxfee",
     "signmessage",
+    "walletlock",
+    "walletpassphrase",
+    "walletpassphrasechange",
      */
 ];
 

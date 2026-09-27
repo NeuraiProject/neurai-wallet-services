@@ -70,6 +70,10 @@ services:
         max-file: "5"
 
     environment:
+      # Chain the service accepts: a node answering another getblockhash(0)
+      # (e.g. a testnet node wired here by mistake) is never used.
+      NEURAI_NETWORK: "mainnet"
+      NEURAI_EXPECTED_GENESIS: "00000044d33c0c0ba019be5c0249730424a69cb4c222153322f68c6104484806"
       NEURAI_NODE_NAME: "neuraid-mainnet"
       # Must match rpcuser / rpcpassword / rpcport in ./neurai.conf: the
       # official image reads that file, not these variables.

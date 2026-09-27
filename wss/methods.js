@@ -235,6 +235,8 @@ const handlers = {
       amounts: selected === "wss/2" ? "string-sats" : "number-sats",
       asset_mempool: false,
       ...(selected === "wss/2" ? { wallet_rpc: walletRpc.capability } : {}),
+      // Extra field for wss/1 only; old clients ignore unknown hello fields.
+      ...(protocol.DEPRECATED_PROTOCOLS[selected] ? { deprecated: protocol.DEPRECATED_PROTOCOLS[selected] } : {}),
       ...identity,
       protocol_min: "wss/1",
       protocol_max: protocol.VERSION,

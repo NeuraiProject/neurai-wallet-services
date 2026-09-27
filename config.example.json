@@ -1,6 +1,7 @@
 {
   "service_id": "neurai-testnet-wallet-service",
   "network": "testnet",
+  "genesis_hash": "0000008b384aeffecdab182575dc4e86c9f07f90318c65088532660ed9a8a021",
   "trusted_proxy_ips": ["127.0.0.1", "::1", "::ffff:127.0.0.1"],
 
   "depin": {
@@ -27,7 +28,7 @@
     "history_page_limit": 100,
     "utxo_page_limit": 1000,
     "bulk_subscribe_limit": 200,
-    "reorg_invalidate_depth": 60,
+    "reorg_invalidate_depth": 120,
     "keepalive_interval_ms": 25000,
     "keepalive_timeout_ms": 10000,
     "send_initial_state": true,

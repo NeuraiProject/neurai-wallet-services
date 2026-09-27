@@ -2,6 +2,7 @@ const {
   SUBPROTOCOL,
   VERSION,
   SUPPORTED_PROTOCOLS,
+  DEPRECATED_PROTOCOLS,
   ERROR_CODES,
   parseMessage,
   makeResponse,
@@ -12,6 +13,7 @@ const {
 test("VERSION is wss/2 with legacy support", () => {
   expect(VERSION).toBe("wss/2");
   expect(SUPPORTED_PROTOCOLS).toContain("wss/1");
+  expect(DEPRECATED_PROTOCOLS).toEqual({ "wss/1": expect.stringMatching(/retired/) });
 });
 
 test("SUBPROTOCOL is a valid HTTP token (RFC 7230)", () => {

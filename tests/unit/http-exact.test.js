@@ -37,12 +37,42 @@ test('raw HTTP parameters survive proxy and real RPC client; replies and cache s
     expect((await fetch(url + '/rpc')).status).toBe(405);
   } finally { await close(server); await close(upstream); }
 });
-test('gettxout bypasses cache and old rejected promise cannot remove replacement', () => {
+test('live coin/spend queries bypass cache and old rejected promise cannot remove replacement', () => {
   const cache = require('../../http/cache-service').create();
   expect(cache.shouldCache('gettxout')).toBe(false);
+  expect(cache.shouldCache('getspentinfo')).toBe(false);
   const old = Promise.resolve(1), fresh = Promise.resolve(2);
   cache.put('getaddressbalance', parse('[1]'), old); cache.clear();
   cache.put('getaddressbalance', parse('[1]'), fresh);
   cache.remove('getaddressbalance', parse('[1]'), old);
   expect(cache.get('getaddressbalance', parse('[1]'))).toBe(fresh);
+});
+
+test('spent index observes replacement, confirmation and eviction without a block notification', async () => {
+  let current = { txid: 'b'.repeat(64), index: 0, height: -1 }, calls = 0;
+  const rpc = async () => {
+    calls++;
+    if (!current) throw Object.assign(new Error('Unable to get spent info'), { code: -5 });
+    return structuredClone(current);
+  };
+  const service = create({ enabled: true }, {}, { nodeDeps, rpc });
+  const server = http.createServer(service.handleRequest); await listen(server);
+  const url = `http://127.0.0.1:${server.address().port}/rpc`;
+  const request = async () => {
+    const reply = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ method: 'getspentinfo', params: [{ txid: 'a'.repeat(64), index: 0 }] }) });
+    return { status: reply.status, body: await reply.json() };
+  };
+  try {
+    expect((await request()).body.result).toEqual(current);
+    current = { txid: 'c'.repeat(64), index: 0, height: -1 };
+    expect((await request()).body.result).toEqual(current);
+    current.height = 120;
+    expect((await request()).body.result).toEqual(current);
+    current = null;
+    expect(await request()).toEqual({ status: 500, body: { error: { message: 'Unable to get spent info', code: -5 } } });
+    current = { txid: 'd'.repeat(64), index: 0, height: -1 };
+    expect((await request()).body.result).toEqual(current);
+    expect(calls).toBe(5);
+  } finally { await close(server); }
 });

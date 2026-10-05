@@ -653,7 +653,11 @@ const handlers = {
       // The node's message (e.g. "txn-mempool-conflict") and code reach the
       // wallet; an upstream failure is reported neutrally.
       const err = toClientError(e, "broadcast failed");
-      throw new MethodError(ERROR_CODES.INTERNAL_ERROR, err.message, { code: err.code });
+      // Keep the service code on wss/2: makeError copies extra fields into
+      // the envelope, so an extra `code` would overwrite it. Preserve the
+      // released wss/1 shape; new clients normalize node_code instead.
+      throw new MethodError(ERROR_CODES.INTERNAL_ERROR, err.message,
+        session.protocol === 'wss/2' ? { node_code: err.code } : { code: err.code });
     }
   },
 

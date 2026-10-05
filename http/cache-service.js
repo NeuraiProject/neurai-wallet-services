@@ -7,7 +7,7 @@ function create() {
     "getassetdata", "listaddressesbyasset", "listassetbalancesbyaddress", "listassets",
     "decodeblock", "getbestblockhash", "getblock", "getblockchaininfo", "getblockcount",
     "getblockhash", "getblockhashes", "getblockheader", "getchaintxstats", "getdifficulty",
-    "getpubkey", "getspentinfo", "gettxoutproof", "gettxoutsetinfo",
+    "getpubkey", "gettxoutproof", "gettxoutsetinfo",
     "preciousblock", "verifychain", "verifytxoutproof", "help", "uptime", "decoderawtransaction",
     "decodescript", "checkaddressrestriction", "checkaddresstag", "checkglobalrestriction",
     "getverifierstring", "isvalidverifierstring", "listaddressesfortag", "listaddressrestrictions",
@@ -19,6 +19,8 @@ function create() {
     // but the reply carries that poolsig).
     "checkdepinvalidity", "listdepinholders", "listdepinaddresses",
   ]);
+  // getspentinfo reads the mempool before the disk index. Like gettxout,
+  // it must stay live even when no new block has arrived.
   const key = (method, params) => stringifyRpcJson({ method, params });
   return {
     addMethod(name, date) { methodsRequested[name] = date; },

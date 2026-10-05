@@ -6,6 +6,9 @@ const { ERROR_CODES } = require('./protocol');
 const { toClientError } = require('../rpcError');
 const METHODS = Object.freeze([
   'getblockchaininfo', 'getblockcount', 'getblockhash', 'getblockheader',
+  // Pool recovery reads the confirmed state chain and independently checks
+  // the spent index. No proof generation or private wallet data is relayed.
+  'getbestblockhash', 'getblock', 'getspentinfo', 'getrawmempool', 'decoderawtransaction',
   'getaddressbalance', 'getaddressdeltas', 'getaddressutxos', 'getaddressmempool',
   'getrawtransaction', 'gettxout', 'estimatesmartfee', 'getassetdata',
   'listassets', 'listassetbalancesbyaddress', 'listaddressesbyasset',

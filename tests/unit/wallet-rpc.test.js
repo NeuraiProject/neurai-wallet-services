@@ -30,3 +30,20 @@ test('preserves node rejection without exposing upstream credentials', async () 
   callRPC.mockRejectedValue({ error: { code: -5, message: 'Invalid address' } });
   await expect(handle(session, { method: 'getaddressutxos', params: [] })).rejects.toMatchObject({ message: 'Invalid address' });
 });
+
+test.each(['getbestblockhash', 'getblock', 'getspentinfo', 'getrawmempool', 'decoderawtransaction'])(
+  'advertises and forwards pool query %s without changing its parameters', async method => {
+    const params = [{ txid: 'a'.repeat(64), index: 0 }, 2];
+    const result = { script: '5120', witness: ['10', 'ab'], zk_portable_tree: { active_for_next_block: true } };
+    callRPC.mockResolvedValue(result);
+    expect(capability.methods).toContain(method);
+    expect(await handle(session, { method, params })).toBe(result);
+    expect(callRPC).toHaveBeenCalledWith(method, params);
+  },
+);
+
+test('missing transaction keeps the node code distinct from the WSS service code', async () => {
+  callRPC.mockRejectedValue({ error: { code: -5, message: 'No such transaction' } });
+  await expect(handle(session, { method: 'getrawtransaction', params: ['a'.repeat(64), true] }))
+    .rejects.toMatchObject({ code: 1005, extra: { node_code: -5 } });
+});

@@ -47,6 +47,15 @@ test("tx.broadcast reports an upstream failure neutrally", async () => {
   expect(e.extra).toEqual({ code: null });
 });
 
+test.each([shape1, shape3])('wss/2 broadcast keeps service and node codes separate on the wire', async error => {
+  const { makeError } = require('../../wss/protocol');
+  withRpc({ sendrawtransaction: { reject: error } });
+  const e = await rejection(handlers['tx.broadcast']({ ...session(), protocol: 'wss/2' }, { rawtx: '00' }));
+  const reply = makeError(1, e.code, e.message, e.extra);
+  expect(reply.error.code).toBe(ERROR_CODES.INTERNAL_ERROR);
+  expect(reply.error.node_code).toBe(error === shape1 ? -26 : null);
+});
+
 test("hello tolerates a failing tip lookup", async () => {
   withRpc({ getbestblockhash: { reject: shape3 } });
   const result = await handlers.hello({ ...session(), helloDone: false }, { protocol: "wss/1" });

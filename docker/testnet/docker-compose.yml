@@ -13,10 +13,10 @@ services:
       dockerfile: Dockerfile
       args:
         BRANCH: "${NODE_BRANCH:-DePIN-Test}"
-        # Audited commit of NODE_BRANCH (reset testnet, genesis 0000008b…a021).
+        # Reviewed C6 commit of NODE_BRANCH (same reset-testnet genesis).
         # Pinning it also forces Docker to rebuild instead of reusing a cached
         # clone of the branch from before the reset.
-        SOURCE_COMMIT: "${NODE_SOURCE_COMMIT:-0fe5a74943210508ec3be34c78e0f9192b7fefec}"
+        SOURCE_COMMIT: "${NODE_SOURCE_COMMIT:-e64965d7311ff51d0f3a9a3a48d8e75992122b5c}"
     restart: unless-stopped
 
     logging:

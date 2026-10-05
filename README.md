@@ -599,7 +599,7 @@ Defaults (all overridable in `.env`):
   Mainnet ships with a `CHANGE-ME-mainnet-wss-token` placeholder —
   set `PROXY_WSS_AUTH_TOKEN` in `.env` before any internet-facing run.
 - Testnet builds the node's `DePIN-Test` branch at `NODE_SOURCE_COMMIT`
-  (default `0fe5a74943210508ec3be34c78e0f9192b7fefec`, the audited reset-testnet
+  (default `e64965d7311ff51d0f3a9a3a48d8e75992122b5c`, the reviewed C6-capable
   node) with DePIN protocol 2 enabled
   (`NEURAI_DEPIN_ENABLED=1`, `NEURAI_DEPIN_TOKEN`, wallet on); the proxy
   relays `depin*` through the RPC port with `PROXY_DEPIN_RATE_LIMIT=60` /
@@ -899,3 +899,42 @@ that clients pin on first use; back that wallet up from now on (see
 `neurai-cli -datadir=/data getblockhash 0` prints the genesis above and that
 `/usr/local/share/neurai/source-commit` matches `NODE_SOURCE_COMMIT`.
 `getnetworkinfo` is not exposed through the service.
+
+### Privacy-pool RPC over HTTP and WSS
+
+HTTP `/rpc` and WSS `rpc.call` expose the pool's read, scan and preflight
+queries. WSS now advertises `getbestblockhash`, `getblock`, `getspentinfo`,
+`getrawmempool` and `decoderawtransaction` in `hello.wallet_rpc.methods`.
+The service relays native schemas, scripts, witnesses and exact amounts;
+it never decrypts private notes or builds proofs. `address.get_state` reports
+transparent address data, not a user's private balance.
+
+`gettxout` and `getspentinfo` bypass HTTP caching because their results can
+change with the mempool before a new block arrives. `chain.tip` and
+`chain.reorg` can trigger a client refresh, but clients must still check the
+pinned instance and their scan checkpoints, especially after reconnection.
+
+For `@neuraiproject/neurai-privacy`, use its `createWalletServiceRpc` client
+adapter with a negotiated `wss/2` handshake and an independently pinned
+genesis. The application supplies a correlated `request(method, params)`
+function that resolves the complete `{id, result}` or `{id, error}` wire
+reply and rejects on timeout/disconnection. The adapter maps the
+one-argument `sendrawtransaction(raw)` to `tx.broadcast({rawtx})`, unwraps
+`{txid}`, and maps the original negative `node_code` to `Error.code`.
+It never retries a publication or switches endpoints. Recreate it after
+each connection and handshake. Additional `sendrawtransaction` arguments
+are rejected rather than silently ignored.
+
+With `wss/2`, both `rpc.call` and `tx.broadcast` report node errors as
+`{code: 1005, node_code: <negative-code-or-null>, message}`. This keeps a
+missing transaction (`node_code: -5`) distinct from a transport or upstream
+failure. The released `wss/1` broadcast error shape is unchanged.
+
+The testnet compose now builds the C6-capable commit shown above, with C6
+active from block 100. If an existing `.env` still sets an older
+`NODE_SOURCE_COMMIT`, update that value before rebuilding; changing the
+template or compose default cannot override it. Check
+`getblockchaininfo.zk_portable_tree.active_for_next_block` and ensure every
+failover node has the required validation rules, history and indexes.
+Same genesis alone does not prove pool capability. This does not activate
+privacy profiles on mainnet or change either network's ports.

@@ -3,6 +3,8 @@
   "network": "testnet",
   "genesis_hash": "0000008b384aeffecdab182575dc4e86c9f07f90318c65088532660ed9a8a021",
   "trusted_proxy_ips": ["127.0.0.1", "::1", "::ffff:127.0.0.1"],
+  "rpc_timeout_ms": 30000,
+  "rpc_method_timeouts_ms": { "gettxoutsetinfo": 600000 },
 
   "depin": {
     "rate_limit": 60,

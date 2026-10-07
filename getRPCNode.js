@@ -1,4 +1,5 @@
 const { readIdentity, sameChain, resolveExpectedChain } = require("./service-identity");
+const { resolveRpcTimeouts, withTimeout } = require("./rpcTimeout");
 const NeuraiRPC = require("@neuraiproject/neurai-rpc");
 
 const getConfig = require("./getConfig");
@@ -23,6 +24,10 @@ if (expected.genesis_hash) {
   console.log("[config] WARNING: no network/genesis_hash configured; the first healthy node defines the chain");
 }
 
+// Every node call is bounded, health checks included: HTTP, WSS and the
+// health check all go through node.rpc below.
+const rpcTimeouts = resolveRpcTimeouts(config);
+
 // DePIN protocol 2 is served on the node's own RPC port: there is no DePIN
 // URL, port or gateway any more. The protocol 1 keys are ignored with a notice.
 const OBSOLETE_NODE_KEYS = ["depin_enabled", "depin_url"];
@@ -33,7 +38,7 @@ for (const node of config.nodes) {
   if (obsolete.length > 0) {
     console.log(`[config] node "${node.name}": ${obsolete.join(", ")} are obsolete (DePIN protocol 2 goes through neurai_url) and ignored`);
   }
-  const rpc = NeuraiRPC.getRPC(node.username, node.password, node.neurai_url);
+  const rpc = withTimeout(NeuraiRPC.getRPC(node.username, node.password, node.neurai_url), rpcTimeouts);
   allNodes.push({ name: node.name, rpc, neuraiUrl: node.neurai_url, active: false, healthError: null });
 }
 

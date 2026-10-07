@@ -69,6 +69,11 @@ fi
 # checks the chain tip to clear its per-block cache.
 : "${PROXY_HTTP_TIP_POLL_INTERVAL_MS:=1000}"
 export PROXY_HTTP_EXTRA_METHODS PROXY_HTTP_CLIENTS
+# Time limit for every call to the node, in milliseconds, and per-method
+# overrides as a JSON object (gettxoutsetinfo has 600000 unless overridden).
+: "${PROXY_RPC_TIMEOUT_MS:=30000}"
+if [ -z "${PROXY_RPC_METHOD_TIMEOUTS_MS:-}" ]; then PROXY_RPC_METHOD_TIMEOUTS_MS='{}'; fi
+export PROXY_RPC_METHOD_TIMEOUTS_MS
 # Reverse proxies whose X-Forwarded-For is believed, for HTTP and WSS alike.
 # PROXY_HTTP_TRUSTED_PROXIES is the former name and still honoured.
 : "${PROXY_TRUSTED_PROXIES:=${PROXY_HTTP_TRUSTED_PROXIES:-127.0.0.1,::1,::ffff:127.0.0.1}}"
@@ -81,6 +86,11 @@ PROXY_HTTP_EXTRA_METHODS_JSON="$(node -e 'const values = (process.env.PROXY_HTTP
 # The value holds client keys: report a malformed one without printing it.
 if ! PROXY_HTTP_CLIENTS_JSON="$(node -e 'const value = JSON.parse(process.env.PROXY_HTTP_CLIENTS); if (!Array.isArray(value)) process.exit(1); process.stdout.write(JSON.stringify(value));' 2>/dev/null)"; then
   echo "[entrypoint] PROXY_HTTP_CLIENTS must be a JSON array (in .env, wrap it in single quotes)" >&2
+  exit 1
+fi
+
+if ! PROXY_RPC_METHOD_TIMEOUTS_JSON="$(node -e 'const value = JSON.parse(process.env.PROXY_RPC_METHOD_TIMEOUTS_MS); if (!value || typeof value !== "object" || Array.isArray(value)) process.exit(1); process.stdout.write(JSON.stringify(value));' 2>/dev/null)"; then
+  echo "[entrypoint] PROXY_RPC_METHOD_TIMEOUTS_MS must be a JSON object, e.g. {\"gettxoutsetinfo\":900000}" >&2
   exit 1
 fi
 
@@ -109,6 +119,8 @@ cat > /app/config.json <<EOF
   "network": "${NEURAI_NETWORK}",
   "genesis_hash": "${NEURAI_EXPECTED_GENESIS}",
   "trusted_proxy_ips": ${PROXY_TRUSTED_PROXY_IPS_JSON},
+  "rpc_timeout_ms": ${PROXY_RPC_TIMEOUT_MS},
+  "rpc_method_timeouts_ms": ${PROXY_RPC_METHOD_TIMEOUTS_JSON},
   "depin": {
     "rate_limit": ${PROXY_DEPIN_RATE_LIMIT},
     "ban_minutes": ${PROXY_DEPIN_BAN_MINUTES}

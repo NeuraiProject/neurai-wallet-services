@@ -108,6 +108,9 @@ services:
       # budget, priority, extra methods; JSON array). Both come from .env.
       PROXY_HTTP_EXTRA_METHODS: "${PROXY_HTTP_EXTRA_METHODS:-}"
       PROXY_HTTP_CLIENTS: "${PROXY_HTTP_CLIENTS:-[]}"
+      # Time limit for calls to the node (ms) and per-method overrides (JSON).
+      PROXY_RPC_TIMEOUT_MS: "${PROXY_RPC_TIMEOUT_MS:-30000}"
+      PROXY_RPC_METHOD_TIMEOUTS_MS: "${PROXY_RPC_METHOD_TIMEOUTS_MS:-}"
       # Default deployment: behind a host reverse proxy that terminates TLS
       # (HestiaCP / nginx / Caddy / etc). The service listens on plain ws://
       # internally and the reverse proxy on the host adds TLS + LE renewal.

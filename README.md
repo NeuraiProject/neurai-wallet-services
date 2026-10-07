@@ -155,6 +155,20 @@ Docker, set `PROXY_WSS_ENABLED=false` in `.env`: the listener keeps
 `PROXY_WSS_PORT`, `PROXY_BIND`, `PROXY_WSS_TLS_ENABLED` and the certificate
 settings.
 
+### Time limit for node calls
+
+`@neuraiproject/neurai-rpc` gives its requests no time limit, so a node that
+stopped answering used to keep each call pending, holding a slot of the node
+queue that HTTP and WSS share, and a hung health check blocked every request
+waiting for a healthy node. Every call to a node, health checks included, now
+has a limit: `rpc_timeout_ms` at the root of `config.json` (30 s by default) and
+`rpc_method_timeouts_ms` for single methods (`gettxoutsetinfo` gets 600000
+unless overridden). A call over the limit is an upstream failure: HTTP answers
+`502` with `upstream RPC unavailable`, WSS `1005`, and the log names the method
+(`node timeout: getblock timed out after 30000 ms`). The request may still
+finish on the node; only the caller is released. In Docker: `PROXY_RPC_TIMEOUT_MS`
+and `PROXY_RPC_METHOD_TIMEOUTS_MS` (a JSON object, in single quotes in `.env`).
+
 ## Status
 
 **Phases 1, 2, 3, 4, 5 + 6 implemented and verified against a live testnet node**:
@@ -768,6 +782,7 @@ self-signed cert in-container at startup.
 ├── getRPCNode.js             # Neurai node selection / health checks
 ├── service-identity.js       # node chain identity (network + genesis) and the expected-chain pin
 ├── rpcError.js               # normalizes @neuraiproject/neurai-rpc rejections
+├── rpcTimeout.js             # time limit for every node call (rpc_timeout_ms)
 ├── clientIp.js               # trusted_proxy_ips + X-Forwarded-For (HTTP and WSS)
 ├── depinRateLimit.js         # per-IP depin* quota shared by HTTP and WSS
 ├── rpcResults.js             # results reduced before they leave (getnetworkinfo), HTTP and WSS
@@ -1041,6 +1056,8 @@ still pointed at it can move:
   (`PROXY_HTTP_EXTRA_METHODS`) or per client. Unknown names stop the start.
 - `getnetworkinfo` is exposed over HTTP and WSS `rpc.call`, without
   `networks` and `localaddresses`. The web wallet reads its `relayfee`.
+- [Time limit for node calls](#time-limit-for-node-calls): 30 s by default,
+  10 min for `gettxoutsetinfo`, configurable per method.
 
 Moving a client from the proxy:
 

@@ -202,7 +202,9 @@ both limits off; without the section, the defaults apply.
 
 The defaults are provisional until measured against a synced mainnet node:
 a regtest burst shows that the limiter works as described, not that a burst
-of 20 suits mainnet.
+of 20 suits mainnet. `tools/measure-flushing-reads.sh` times each of these
+reads on a node and, at the same time, how long `getblockcount` (which needs
+`cs_main`, like block validation) waits while they run.
 The testnet compose turns the limit off: its node flushes these reads at most
 once per chain state. Remove the limit once mainnet runs a node release
 with that fix (DePIN-Test `b96c49f` and `a9f7ca5` for the asset reads,

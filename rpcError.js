@@ -19,7 +19,9 @@ for every node failure. It uses three shapes:
                                                 network failure; `error` is a string
 
 rpcTimeout.js adds a fourth, of our own: an Error with type "Timeout" when
-the node took longer than the configured limit.
+the node took longer than the configured limit. flushingReads.js adds a fifth:
+an Error with type "Throttled" when the service refused the call before it
+reached the node. That one is not an upstream failure.
 
 A node JSON-RPC error is therefore "an object `error` with a numeric `code`",
 whatever the HTTP status. Everything else that is not a plain Error thrown by
@@ -45,11 +47,16 @@ function isNodeTimeout(e) {
   return isObject(e) && e.type === "Timeout";
 }
 
+// Refused by this service (flushingReads.js); the node never saw the call.
+function isThrottled(e) {
+  return isObject(e) && e.type === "Throttled";
+}
+
 // Shape 2 without a JSON-RPC error body, shape 3 or a timeout. Diagnostics should use
 // isNodeUnreachable; this one decides the HTTP status (502) and is deliberately
 // broader: a 401 from misconfigured credentials is an upstream failure too.
 function isUpstreamFailure(e) {
-  if (!isObject(e) || isRPCError(e)) return false;
+  if (!isObject(e) || isRPCError(e) || isThrottled(e)) return false;
   if (isNodeUnreachable(e) || isNodeTimeout(e)) return true;
   return typeof e.status === "number" && e.status !== 200;
 }
@@ -92,6 +99,7 @@ function toClientError(e, fallback = "RPC request failed") {
 function describeForLog(e) {
   if (isNodeUnreachable(e)) return `node unreachable: ${getRPCErrorMessage(e) || "no details"}`;
   if (isNodeTimeout(e)) return `node timeout: ${e.message}`;
+  if (isThrottled(e)) return `throttled: ${e.message}`;
   if (isUpstreamFailure(e)) return `upstream HTTP ${e.status}${e.statusText ? ` ${e.statusText}` : ""}`;
   const code = getRPCErrorCode(e);
   const message = getRPCErrorMessage(e) || "unknown error";
@@ -103,6 +111,7 @@ module.exports = {
   isRPCError,
   isNodeUnreachable,
   isNodeTimeout,
+  isThrottled,
   isUpstreamFailure,
   getRPCErrorMessage,
   getRPCErrorCode,

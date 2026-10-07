@@ -85,6 +85,12 @@ services:
       # answered by the node with an error. Quota for depin* per IP (HTTP+WSS).
       PROXY_DEPIN_RATE_LIMIT: "${PROXY_DEPIN_RATE_LIMIT:-60}"
       PROXY_DEPIN_BAN_MINUTES: "${PROXY_DEPIN_BAN_MINUTES:-10}"
+      # v1.0.6 flushes its state on every asset/restricted-asset list read and
+      # gettxoutsetinfo, holding cs_main. Uncached calls to those reach the node
+      # at this rate at most (per second, burst, at once); 0 turns it off.
+      PROXY_FLUSHING_READS_PER_SECOND: "${PROXY_FLUSHING_READS_PER_SECOND:-2}"
+      PROXY_FLUSHING_READS_BURST: "${PROXY_FLUSHING_READS_BURST:-20}"
+      PROXY_FLUSHING_READS_MAX_IN_FLIGHT: "${PROXY_FLUSHING_READS_MAX_IN_FLIGHT:-4}"
       # Reverse proxies whose X-Forwarded-For is believed (HTTP and WSS). When
       # using Hestia/nginx on the host, add this Compose network's bridge
       # gateway (inspect it with `docker network inspect neurai_net_mainnet`).

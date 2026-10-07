@@ -4,7 +4,7 @@ const { createClients, parseExtraMethods } = require("./clients");
 const cacheServiceMod = require("./cache-service");
 const { filterRpcResult } = require("../rpcResults");
 const { createHandler, sendJson } = require("./router");
-const { toClientError, getRPCErrorMessage, describeForLog } = require("../rpcError");
+const { toClientError, getRPCErrorMessage, describeForLog, isThrottled } = require("../rpcError");
 const { clientIp, resolveTrustedProxies } = require("../clientIp");
 const { getSharedLimiter, isDepinMethod, refusalDescription } = require("../depinRateLimit");
 
@@ -150,6 +150,10 @@ function create(rawCfg, globalConfig, injected = {}) {
       // rejects instead; keep `null` here so nothing can hang.
       return sendJson(res, 200, { result: result === undefined ? null : result });
     } catch (e) {
+      // A read that flushes the node's state, refused by the service-wide
+      // limit (flushingReads.js): busy, not an upstream failure. The cache has
+      // already dropped the rejected promise.
+      if (isThrottled(e)) return sendJson(res, 503, { error: "node busy", description: e.message }, { "retry-after": String(e.retryAfterSeconds) });
       if (method === "checkdepinvalidity" && getRPCErrorMessage(e).includes("must start with &")) return sendJson(res, 200, { result: { valid: false, isDePinAsset: false, message: "Not a DePIN asset (assets must start with & to be DePIN assets)" } });
       const err = toClientError(e);
       // Node JSON-RPC errors keep the documented 500 + {message, code}; an

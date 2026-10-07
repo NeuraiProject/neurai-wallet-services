@@ -5,6 +5,7 @@ const httpServiceMod = require("./http");
 const httpStandalone = require("./http/standalone");
 const { resolveTrustedProxies } = require("./clientIp");
 const { resolveDepinConfig } = require("./depinRateLimit");
+const { getSharedFlushingLimiter } = require("./flushingReads");
 
 process.on("uncaughtException", (error, origin) => {
   console.log("----- Uncaught exception -----");
@@ -33,6 +34,8 @@ try {
   // Root-level settings shared by both transports; fail early and clearly.
   resolveTrustedProxies(config);
   resolveDepinConfig(config);
+  // Validates flushing_reads and creates the limiter wss/rpc.js will use.
+  getSharedFlushingLimiter(config);
   const httpService = httpServiceMod.create(config.http, config);
   if (wssEnabled) {
     // HTTP, when enabled, shares the WSS listener (its port, host and TLS).

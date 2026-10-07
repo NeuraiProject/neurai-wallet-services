@@ -11,6 +11,12 @@
     "ban_minutes": 10
   },
 
+  "flushing_reads": {
+    "per_second": 0,
+    "burst": 20,
+    "max_in_flight": 4
+  },
+
   "wss": {
     "enabled": false,
     "host": "0.0.0.0",

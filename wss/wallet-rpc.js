@@ -3,7 +3,7 @@
 const { callRPC } = require('./rpc');
 const { requireHello, requireSynced, MethodError } = require('./common');
 const { ERROR_CODES } = require('./protocol');
-const { toClientError } = require('../rpcError');
+const { toClientError, isThrottled } = require('../rpcError');
 const { filterRpcResult } = require('../rpcResults');
 const METHODS = Object.freeze([
   'getblockchaininfo', 'getblockcount', 'getblockhash', 'getblockheader',
@@ -29,6 +29,8 @@ async function handle(session, params) {
   if (!Array.isArray(params.params)) throw new MethodError(ERROR_CODES.INVALID_PARAMS, 'RPC params must be an array');
   try { return filterRpcResult(params.method, await callRPC(params.method, params.params)); }
   catch (error) {
+    // Refused by the service-wide limit on reads that flush the node's state.
+    if (isThrottled(error)) throw new MethodError(ERROR_CODES.RATE_LIMITED, error.message, { retry_after_seconds: error.retryAfterSeconds });
     const detail = toClientError(error, 'wallet RPC failed');
     throw new MethodError(ERROR_CODES.INTERNAL_ERROR, detail.message, { node_code: detail.code });
   }

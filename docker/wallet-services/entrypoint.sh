@@ -22,6 +22,12 @@ fi
 # and minute, and how long an IP that went over is blocked (0 = no ban).
 : "${PROXY_DEPIN_RATE_LIMIT:=60}"
 : "${PROXY_DEPIN_BAN_MINUTES:=10}"
+# Service-wide limit on the node reads that flush its state on every call in
+# v1.0.6 (asset and restricted-asset lists, gettxoutsetinfo): uncached calls
+# per second (0 disables the limit), burst, and how many run on the node at once.
+: "${PROXY_FLUSHING_READS_PER_SECOND:=2}"
+: "${PROXY_FLUSHING_READS_BURST:=20}"
+: "${PROXY_FLUSHING_READS_MAX_IN_FLIGHT:=4}"
 : "${PROXY_WSS_ENABLED:=false}"
 : "${PROXY_WSS_PORT:=19020}"
 : "${PROXY_WSS_PATH:=/push}"
@@ -124,6 +130,11 @@ cat > /app/config.json <<EOF
   "depin": {
     "rate_limit": ${PROXY_DEPIN_RATE_LIMIT},
     "ban_minutes": ${PROXY_DEPIN_BAN_MINUTES}
+  },
+  "flushing_reads": {
+    "per_second": ${PROXY_FLUSHING_READS_PER_SECOND},
+    "burst": ${PROXY_FLUSHING_READS_BURST},
+    "max_in_flight": ${PROXY_FLUSHING_READS_MAX_IN_FLIGHT}
   },
   "wss": {
     "enabled": ${PROXY_WSS_ENABLED},

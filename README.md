@@ -169,6 +169,39 @@ unless overridden). A call over the limit is an upstream failure: HTTP answers
 finish on the node; only the caller is released. In Docker: `PROXY_RPC_TIMEOUT_MS`
 and `PROXY_RPC_METHOD_TIMEOUTS_MS` (a JSON object, in single quotes in `.env`).
 
+### Limit on reads that flush the node (mainnet)
+
+Mainnet runs node v1.0.6, which writes its whole state to disk on every call
+to `listassets`, `listaddressesbyasset`, `listassetbalancesbyaddress`,
+`listtagsforaddress`, `listaddressesfortag`, `listaddressrestrictions`,
+`listglobalrestrictions` and `gettxoutsetinfo`, holding `cs_main`, the lock
+block validation needs. A burst of them with varied parameters (so the
+per-block cache does not help) stalls the node.
+
+`flushing_reads` at the root of `config.json` limits how many of these calls
+reach the node, for HTTP and WSS `rpc.call` together (not per IP):
+
+- `per_second` (default 2) and `burst` (default 20): a token bucket;
+- `max_in_flight` (default 4): how many may run on the node at once. 4 is the
+  node queue's own limit, so by default nothing is refused for concurrency:
+  the explorer asks for three of these at once on an asset page, and
+  `gettxoutsetinfo` holds its slot for minutes on mainnet (its scan runs after
+  the flush, without the lock).
+
+The check runs in the node queue right before the call is sent: a reply from
+the HTTP cache costs nothing, and a request waiting in a queue spends nothing
+until its turn. Trusted clients count too, though they keep their priority.
+A refused call gets HTTP `503` with `Retry-After`, or WSS `1007` with
+`retry_after_seconds`; it is not an upstream failure. `per_second: 0` turns
+both limits off; without the section, the defaults apply.
+
+The defaults are provisional until measured against a synced mainnet node.
+The testnet compose turns the limit off: its node flushes these reads at most
+once per chain state. Remove the limit once mainnet runs a node release
+with that fix (DePIN-Test `b96c49f` and `a9f7ca5` for the asset reads,
+`1e32522` for `gettxoutsetinfo`). In Docker: `PROXY_FLUSHING_READS_PER_SECOND`,
+`PROXY_FLUSHING_READS_BURST` and `PROXY_FLUSHING_READS_MAX_IN_FLIGHT`.
+
 ## Status
 
 **Phases 1, 2, 3, 4, 5 + 6 implemented and verified against a live testnet node**:
@@ -689,8 +722,8 @@ Defaults (all overridable in `.env`):
   Mainnet ships with a `CHANGE-ME-mainnet-wss-token` placeholder —
   set `PROXY_WSS_AUTH_TOKEN` in `.env` before any internet-facing run.
 - Testnet builds the node's `DePIN-Test` branch at `NODE_SOURCE_COMMIT`
-  (default `a9f7ca593a8d5121d6bb07bbb55670ae5a6a09e3`, the reviewed C6-capable
-  node with the asset-database read fixes) with DePIN protocol 2 enabled
+  (default `1e325225c65a1de4905147062fed1dd25d9d61c6`, the reviewed C6-capable
+  node with the database read fixes) with DePIN protocol 2 enabled
   (`NEURAI_DEPIN_ENABLED=1`, `NEURAI_DEPIN_TOKEN`, wallet on); the proxy
   relays `depin*` through the RPC port with `PROXY_DEPIN_RATE_LIMIT=60` /
   `PROXY_DEPIN_BAN_MINUTES=10`. Mainnet runs the official `v1.0.6` image,
@@ -785,6 +818,7 @@ self-signed cert in-container at startup.
 ├── rpcTimeout.js             # time limit for every node call (rpc_timeout_ms)
 ├── clientIp.js               # trusted_proxy_ips + X-Forwarded-For (HTTP and WSS)
 ├── depinRateLimit.js         # per-IP depin* quota shared by HTTP and WSS
+├── flushingReads.js          # service-wide limit on reads that flush the node (mainnet v1.0.6)
 ├── rpcResults.js             # results reduced before they leave (getnetworkinfo), HTTP and WSS
 ├── http/
 │   ├── index.js              # POST /rpc: whitelist, rate limits, queue, per-block cache
@@ -1058,6 +1092,10 @@ still pointed at it can move:
   `networks` and `localaddresses`. The web wallet reads its `relayfee`.
 - [Time limit for node calls](#time-limit-for-node-calls): 30 s by default,
   10 min for `gettxoutsetinfo`, configurable per method.
+- [Limit on reads that flush the node](#limit-on-reads-that-flush-the-node-mainnet):
+  mainnet's v1.0.6 node writes its state to disk on every asset or
+  restricted-asset list and `gettxoutsetinfo`; at most 2 uncached calls per
+  second (bursts of 20, 4 at once) reach it. Off in the testnet compose.
 
 Moving a client from the proxy:
 

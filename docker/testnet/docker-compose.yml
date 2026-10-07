@@ -14,10 +14,11 @@ services:
       args:
         BRANCH: "${NODE_BRANCH:-DePIN-Test}"
         # Reviewed commit of NODE_BRANCH (same reset-testnet genesis): C6, plus
-        # asset-database reads that no longer force a full flush per call.
+        # asset, restricted-asset and gettxoutsetinfo reads that flush at most
+        # once per chain state instead of on every call.
         # Pinning it also forces Docker to rebuild instead of reusing a cached
         # clone of the branch from before the reset.
-        SOURCE_COMMIT: "${NODE_SOURCE_COMMIT:-a9f7ca593a8d5121d6bb07bbb55670ae5a6a09e3}"
+        SOURCE_COMMIT: "${NODE_SOURCE_COMMIT:-1e325225c65a1de4905147062fed1dd25d9d61c6}"
     restart: unless-stopped
 
     logging:
@@ -131,6 +132,9 @@ services:
       # requests per minute, and minutes an IP that went over stays blocked.
       PROXY_DEPIN_RATE_LIMIT: "${PROXY_DEPIN_RATE_LIMIT:-60}"
       PROXY_DEPIN_BAN_MINUTES: "${PROXY_DEPIN_BAN_MINUTES:-10}"
+      # Off: the limit on reads that flush the node's state is for mainnet's
+      # v1.0.6. This node flushes those reads at most once per chain state.
+      PROXY_FLUSHING_READS_PER_SECOND: "${PROXY_FLUSHING_READS_PER_SECOND:-0}"
       # Reverse proxies whose X-Forwarded-For is believed (HTTP and WSS). When
       # using Hestia/nginx on the host, add this Compose network's bridge
       # gateway (inspect it with `docker network inspect neurai_net_testnet`).

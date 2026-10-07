@@ -1,5 +1,6 @@
 const { default: PQueue } = require("p-queue");
 const { getRPCNode, getIdentity } = require("../getRPCNode");
+const { isFlushingRead, getSharedFlushingLimiter, FlushingReadThrottledError } = require("../flushingReads");
 
 let pushQueue = null;
 
@@ -17,7 +18,21 @@ function callRPC(method, params, priority = 0) {
   return pushQueue.add(async () => {
     await getIdentity();
     const node = getRPCNode();
-    return node.rpc(method, params == null ? [] : params);
+    // Reads that flush the node's state (flushingReads.js) ask the limiter
+    // here, with the call about to reach the node: a call waiting in a queue
+    // has spent nothing yet, and HTTP and WSS share one budget.
+    let permit = null;
+    if (isFlushingRead(method)) {
+      permit = getSharedFlushingLimiter().tryAcquire();
+      if (!permit.allowed) throw new FlushingReadThrottledError(method, permit.retryAfterSeconds);
+    }
+    try {
+      return await node.rpc(method, params == null ? [] : params);
+    } finally {
+      // Also on error and on timeout (a timed-out call may still be running
+      // on the node, which cannot be cancelled from here).
+      if (permit) permit.release();
+    }
   }, { priority });
 }
 

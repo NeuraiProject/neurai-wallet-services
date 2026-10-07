@@ -181,12 +181,17 @@ per-block cache does not help) stalls the node.
 `flushing_reads` at the root of `config.json` limits how many of these calls
 reach the node, for HTTP and WSS `rpc.call` together (not per IP):
 
-- `per_second` (default 2) and `burst` (default 20): a token bucket;
-- `max_in_flight` (default 4): how many may run on the node at once. 4 is the
-  node queue's own limit, so by default nothing is refused for concurrency:
-  the explorer asks for three of these at once on an asset page, and
-  `gettxoutsetinfo` holds its slot for minutes on mainnet (its scan runs after
-  the flush, without the lock).
+- `per_second` (default 2) and `burst` (default 20): a token bucket, not a
+  cap per second. After a quiet spell the stored `burst` calls can go through
+  within moments (at most `max_in_flight` at a time); after that, calls come
+  back at `per_second`;
+- `max_in_flight` (default 4): how many of these calls the service has
+  outstanding at once. 4 is the node queue's own limit, so by default nothing
+  is refused for concurrency: the explorer asks for three of these at once on
+  an asset page, and `gettxoutsetinfo` holds its slot for minutes on mainnet
+  (its scan runs after the flush, without the lock). A call that runs past its
+  [time limit](#time-limit-for-node-calls) frees its slot although the node may
+  still be working on it, so for a while the node can have more than this.
 
 The check runs in the node queue right before the call is sent: a reply from
 the HTTP cache costs nothing, and a request waiting in a queue spends nothing
@@ -195,7 +200,9 @@ A refused call gets HTTP `503` with `Retry-After`, or WSS `1007` with
 `retry_after_seconds`; it is not an upstream failure. `per_second: 0` turns
 both limits off; without the section, the defaults apply.
 
-The defaults are provisional until measured against a synced mainnet node.
+The defaults are provisional until measured against a synced mainnet node:
+a regtest burst shows that the limiter works as described, not that a burst
+of 20 suits mainnet.
 The testnet compose turns the limit off: its node flushes these reads at most
 once per chain state. Remove the limit once mainnet runs a node release
 with that fix (DePIN-Test `b96c49f` and `a9f7ca5` for the asset reads,
@@ -1094,8 +1101,9 @@ still pointed at it can move:
   10 min for `gettxoutsetinfo`, configurable per method.
 - [Limit on reads that flush the node](#limit-on-reads-that-flush-the-node-mainnet):
   mainnet's v1.0.6 node writes its state to disk on every asset or
-  restricted-asset list and `gettxoutsetinfo`; at most 2 uncached calls per
-  second (bursts of 20, 4 at once) reach it. Off in the testnet compose.
+  restricted-asset list and `gettxoutsetinfo`; uncached calls to those draw
+  from a bucket of 20 that refills at 2 per second, with 4 outstanding at
+  most. Off in the testnet compose.
 
 Moving a client from the proxy:
 

@@ -12,8 +12,10 @@
 // call reaches the node, so HTTP and WSS draw from the same budget, a reply
 // from the HTTP cache never counts, and calls waiting in a queue spend nothing
 // until their turn.
-//  - a token bucket: `per_second` tokens per second, at most `burst` stored;
-//  - at most `max_in_flight` of these calls on the node at once.
+//  - a token bucket: `per_second` tokens per second, at most `burst` stored.
+//    Not a cap per second: a full bucket lets `burst` calls through at once;
+//  - at most `max_in_flight` of these calls outstanding at once. A call that
+//    times out frees its slot although the node may still be running it.
 // Both limits are checked and taken together: a call refused for one of them
 // takes nothing from the other. per_second = 0 disables both.
 

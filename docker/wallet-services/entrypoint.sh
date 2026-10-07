@@ -23,8 +23,9 @@ fi
 : "${PROXY_DEPIN_RATE_LIMIT:=60}"
 : "${PROXY_DEPIN_BAN_MINUTES:=10}"
 # Service-wide limit on the node reads that flush its state on every call in
-# v1.0.6 (asset and restricted-asset lists, gettxoutsetinfo): uncached calls
-# per second (0 disables the limit), burst, and how many run on the node at once.
+# v1.0.6 (asset and restricted-asset lists, gettxoutsetinfo): a bucket of BURST
+# uncached calls refilled at PER_SECOND per second (0 disables the limit), and
+# how many may be outstanding at once.
 : "${PROXY_FLUSHING_READS_PER_SECOND:=2}"
 : "${PROXY_FLUSHING_READS_BURST:=20}"
 : "${PROXY_FLUSHING_READS_MAX_IN_FLIGHT:=4}"

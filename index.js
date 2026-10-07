@@ -2,6 +2,7 @@ const process = require("process");
 const getConfig = require("./getConfig");
 const wss = require("./wss");
 const httpServiceMod = require("./http");
+const httpStandalone = require("./http/standalone");
 const { resolveTrustedProxies } = require("./clientIp");
 const { resolveDepinConfig } = require("./depinRateLimit");
 
@@ -20,16 +21,11 @@ process.on("unhandledRejection", (reason, promise) => {
 });
 
 const config = getConfig();
+const wssEnabled = Boolean(config.wss && config.wss.enabled === true);
+const httpEnabled = Boolean(config.http && config.http.enabled === true);
 
-if (config.http && config.http.enabled === true && (!config.wss || config.wss.enabled !== true)) {
-  console.log("[HTTP] http.enabled requires wss.enabled because both protocols share its listener.");
-  process.exit(1);
-}
-
-if (!config.wss || config.wss.enabled !== true) {
-  console.log(
-    "[WSS] disabled in config (wss.enabled !== true). Nothing to start.",
-  );
+if (!wssEnabled && !httpEnabled) {
+  console.log("[config] wss.enabled and http.enabled are both off. Nothing to start.");
   process.exit(0);
 }
 
@@ -38,8 +34,13 @@ try {
   resolveTrustedProxies(config);
   resolveDepinConfig(config);
   const httpService = httpServiceMod.create(config.http, config);
-  wss.start(config.wss, config, httpService);
+  if (wssEnabled) {
+    // HTTP, when enabled, shares the WSS listener (its port, host and TLS).
+    wss.start(config.wss, config, httpService);
+  } else {
+    httpStandalone.start(config.http, httpService);
+  }
 } catch (e) {
-  console.log("[WSS] failed to start:", e && e.message ? e.message : e);
+  console.log(`[${wssEnabled ? "WSS" : "HTTP"}] failed to start:`, e && e.message ? e.message : e);
   process.exit(1);
 }

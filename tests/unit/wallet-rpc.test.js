@@ -47,3 +47,13 @@ test('missing transaction keeps the node code distinct from the WSS service code
   await expect(handle(session, { method: 'getrawtransaction', params: ['a'.repeat(64), true] }))
     .rejects.toMatchObject({ code: 1005, extra: { node_code: -5 } });
 });
+
+test('advertises getnetworkinfo without proxies or local addresses', async () => {
+  callRPC.mockResolvedValue({
+    version: 1000600, relayfee: 0.01, incrementalfee: 0.00001,
+    networks: [{ name: 'onion', proxy: '127.0.0.1:9050' }],
+    localaddresses: [{ address: '203.0.113.9', port: 19000, score: 4 }],
+  });
+  expect(capability.methods).toContain('getnetworkinfo');
+  expect(await handle(session, { method: 'getnetworkinfo', params: [] })).toEqual({ version: 1000600, relayfee: 0.01, incrementalfee: 0.00001 });
+});

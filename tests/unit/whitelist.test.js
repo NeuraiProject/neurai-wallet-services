@@ -1,4 +1,4 @@
-const { isWhitelisted } = require("../../http/whitelist");
+const { isWhitelisted, EXTRA_METHODS } = require("../../http/whitelist");
 const cacheServiceMod = require("../../http/cache-service");
 
 /*
@@ -50,6 +50,16 @@ test("nothing from the message pool is cached; DePIN chain queries are", () => {
     expect([method, cache.shouldCache(method)]).toEqual([method, false]);
   }
   for (const method of ["checkdepinvalidity", "listdepinholders", "listdepinaddresses", "getpubkey"]) {
+    expect([method, cache.shouldCache(method)]).toEqual([method, true]);
+  }
+});
+
+test("getnetworkinfo is public (reduced by rpcResults.js); slow or operator methods are opt-in only", () => {
+  expect(isWhitelisted("getnetworkinfo")).toBe(true);
+  expect(EXTRA_METHODS).toEqual(["gettxoutsetinfo", "getmininginfo", "getconnectioncount", "getnettotals"]);
+  for (const method of EXTRA_METHODS) expect([method, isWhitelisted(method)]).toEqual([method, false]);
+  const cache = cacheServiceMod.create();
+  for (const method of ["getnetworkinfo", "gettxoutsetinfo", "getmininginfo"]) {
     expect([method, cache.shouldCache(method)]).toEqual([method, true]);
   }
 });

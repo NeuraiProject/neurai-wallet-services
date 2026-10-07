@@ -102,7 +102,7 @@ function pathOf(req) {
   return qIdx === -1 ? url : url.slice(0, qIdx);
 }
 
-function startCertReloader(server, config) {
+function startCertReloader(server, config, label = "[WSS]") {
   // Watches cert + key file mtime. When either changes (e.g. certbot renewed),
   // load both into memory and call setSecureContext so new TLS handshakes use
   // the new cert. Existing connections are untouched.
@@ -136,10 +136,10 @@ function startCertReloader(server, config) {
       certMtime = newCertMtime;
       keyMtime = newKeyMtime;
       console.log(
-        `[WSS] reloaded TLS cert (mtime ${new Date(newCertMtime).toISOString()})`,
+        `${label} reloaded TLS cert (mtime ${new Date(newCertMtime).toISOString()})`,
       );
     } catch (e) {
-      console.log("[WSS] cert reload failed:", e && e.message ? e.message : e);
+      console.log(`${label} cert reload failed:`, e && e.message ? e.message : e);
     }
   }, intervalMs);
   if (timer.unref) timer.unref();
@@ -161,27 +161,31 @@ function attachHttpService(server, httpService) {
   if (httpService) server.on("request", httpService.handleRequest);
 }
 
-function start(config, ctx, httpService) {
-  let server;
+// The listener shared by WSS and HTTP, or used by HTTP alone (http/standalone.js).
+function createListener(config, label = "[WSS]") {
   if (config.tls_enabled === false) {
     // Plain HTTP mode. Used when a reverse proxy (nginx/Caddy/etc.) terminates TLS upstream
     // and forwards the WebSocket upgrade to this port. NEVER expose this port directly to the
     // internet — bind to a private interface or restrict via firewall.
-    server = http.createServer();
-    console.log("[WSS] TLS disabled (tls_enabled=false). Expect a reverse proxy to terminate TLS.");
-  } else {
-    if (!fs.existsSync(config.ssl_cert)) {
-      throw new Error(`[WSS] ssl_cert not found: ${config.ssl_cert}`);
-    }
-    if (!fs.existsSync(config.ssl_key)) {
-      throw new Error(`[WSS] ssl_key not found: ${config.ssl_key}`);
-    }
-    server = https.createServer({
-      cert: fs.readFileSync(config.ssl_cert),
-      key: fs.readFileSync(config.ssl_key),
-    });
-    startCertReloader(server, config);
+    console.log(`${label} TLS disabled (tls_enabled=false). Expect a reverse proxy to terminate TLS.`);
+    return http.createServer();
   }
+  if (!fs.existsSync(config.ssl_cert)) {
+    throw new Error(`${label} ssl_cert not found: ${config.ssl_cert}`);
+  }
+  if (!fs.existsSync(config.ssl_key)) {
+    throw new Error(`${label} ssl_key not found: ${config.ssl_key}`);
+  }
+  const server = https.createServer({
+    cert: fs.readFileSync(config.ssl_cert),
+    key: fs.readFileSync(config.ssl_key),
+  });
+  startCertReloader(server, config, label);
+  return server;
+}
+
+function start(config, ctx, httpService) {
+  const server = createListener(config);
 
   const wss = new WebSocketServer({
     noServer: true,
@@ -359,4 +363,4 @@ function startChainEvents(config, httpService) {
   );
 }
 
-module.exports = { start, createRateLimiter, attachHttpService };
+module.exports = { start, createRateLimiter, attachHttpService, createListener };

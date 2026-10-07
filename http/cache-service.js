@@ -7,7 +7,7 @@ function create() {
     "getassetdata", "listaddressesbyasset", "listassetbalancesbyaddress", "listassets",
     "decodeblock", "getbestblockhash", "getblock", "getblockchaininfo", "getblockcount",
     "getblockhash", "getblockhashes", "getblockheader", "getchaintxstats", "getdifficulty",
-    "getpubkey", "gettxoutproof", "gettxoutsetinfo",
+    "getpubkey", "gettxoutproof", "gettxoutsetinfo", "getmininginfo", "getnetworkinfo",
     "preciousblock", "verifychain", "verifytxoutproof", "help", "uptime", "decoderawtransaction",
     "decodescript", "checkaddressrestriction", "checkaddresstag", "checkglobalrestriction",
     "getverifierstring", "isvalidverifierstring", "listaddressesfortag", "listaddressrestrictions",

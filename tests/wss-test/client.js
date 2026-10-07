@@ -1,6 +1,6 @@
 const WebSocket = require("ws");
 
-const HOST = process.env.PROXY_HOST || "rpc-proxy";
+const HOST = process.env.PROXY_HOST || "wallet-services";
 const PORT = process.env.PROXY_PORT || "19020";
 const PATH = process.env.PROXY_PATH || "/push";
 const SCHEME = process.env.PROXY_SCHEME || "wss";
@@ -119,7 +119,7 @@ async function withSession(fn) {
   }
 }
 
-async function waitForProxy() {
+async function waitForService() {
   const max = 60;
   for (let i = 0; i < max; i++) {
     const res = await connect();
@@ -128,10 +128,10 @@ async function waitForProxy() {
       return;
     }
     try { if (res.ws) res.ws.terminate(); } catch {}
-    console.log(`  ... waiting for proxy (${i + 1}/${max}, last=${res.status})`);
+    console.log(`  ... waiting for wallet-services (${i + 1}/${max}, last=${res.status})`);
     await delay(2000);
   }
-  throw new Error("proxy never became reachable");
+  throw new Error("wallet-services never became reachable");
 }
 
 async function test401NoAuth() {
@@ -502,7 +502,7 @@ async function testDepinChallengeRequiresAddress() {
 }
 
 async function testDepinSignedRejectsMissingSignature() {
-  // The proxy no longer signs or relays on a client's behalf: the protocol 1
+  // The service no longer signs or relays on a client's behalf: the protocol 1
   // signed methods are gone (1004 with a pointer), and the legacy
   // {address, signature, args} shape is refused on the protocol 2 methods.
   await withSession(async (ws) => {
@@ -811,7 +811,7 @@ async function testBurst() {
   console.log(`[wss-test] token: ${TOKEN.slice(0, 8)}...`);
 
   try {
-    await waitForProxy();
+    await waitForService();
   } catch (e) {
     console.log(`[wss-test] FATAL: ${e.message}`);
     process.exit(2);

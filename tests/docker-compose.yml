@@ -9,10 +9,10 @@ services:
       - test
     environment:
       # Port and token follow docker/testnet/.env (same defaults as there).
-      PROXY_HOST: rpc-proxy
+      PROXY_HOST: wallet-services
       PROXY_PORT: "${PROXY_WSS_PORT:-19020}"
       PROXY_PATH: /push
-      # Match the rpc-proxy TLS setting above: "ws" when TLS_ENABLED=false, "wss" when true.
+      # Match the wallet-services TLS setting above: "ws" when TLS_ENABLED=false, "wss" when true.
       PROXY_SCHEME: "ws"
       PROXY_TOKEN: "${PROXY_WSS_AUTH_TOKEN:-testnet-wss-token-do-not-use-in-production}"
       # hello must report this genesis: the suite fails if the stack is still
@@ -28,6 +28,6 @@ services:
       BURST_SIZE: "80"
       BURST_LIMIT: "50"
     depends_on:
-      - rpc-proxy
+      - wallet-services
     networks:
       - neurai_net_testnet

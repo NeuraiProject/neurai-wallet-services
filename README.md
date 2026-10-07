@@ -16,14 +16,18 @@ that speaks the same protocol.
 - A WSS endpoint at `/push` that speaks a JSON-RPC-like protocol over WebSocket.
 - Optional public HTTP RPC endpoints on the same listener: `POST /rpc` and
   `GET /settings`, `/whitelist`, `/getCache`. Enable them with `http.enabled`.
+  They can also run alone, without WSS, as a drop-in for the retired
+  neurai-rpc-proxy.
   (`POST /depin` and `POST /depin/challenge` belonged to DePIN protocol 1 and
   answer `410 Gone` for one release.)
   Public HTTP calls are whitelisted, rate-limited and queued behind WSS RPC work.
 
 ### Optional public HTTP RPC
 
-HTTP shares the WSS port and TLS configuration; it cannot start independently.
-Leave it disabled unless the listener is intended to publish the RPC API.
+With WSS enabled, HTTP shares the WSS listener (port, host and TLS). With
+`wss.enabled: false` the HTTP API runs alone — see
+[HTTP without WSS](#http-without-wss). Leave HTTP disabled unless the listener
+is intended to publish the RPC API.
 
 ```json
 "http": {
@@ -79,6 +83,77 @@ POST-only route answers `GET` with `405` and `Allow: POST`.
 - DePIN protocol 2 relay: `depin.*` over WSS and `depin*` over `POST /rpc`,
   with one per-IP quota shared by both transports.
 - Docker setup for the testnet service stack, with tests kept under `tests/`.
+
+### Trusted HTTP clients
+
+Backends that call `/rpc` from one address — an explorer, a faucet, a swap,
+an indexer — exhaust the public per-IP budget
+(`max_requests_per_second_per_ip`, 20 by default) at once. List them in
+`http.clients`:
+
+```json
+"clients": [
+  { "name": "explorer", "key": "<32+ random characters>", "max_requests_per_second": 200, "extra_methods": ["gettxoutsetinfo"] },
+  { "name": "internal", "ips": ["172.16.0.0/12"] }
+]
+```
+
+- A request belongs to a client when it carries the client's `key` or comes
+  from one of its `ips` (addresses or CIDR ranges). The client IP honours
+  `X-Forwarded-For` only from `trusted_proxy_ips`.
+- The key is the password of HTTP Basic auth, which is what
+  `@neuraiproject/neurai-rpc`'s `getRPC(username, password, url)` already
+  sends, so a client only changes its configuration. `Authorization: Bearer
+  <key>` works too. The username is ignored; keys need at least 16 characters.
+- Credentials that match no key are not refused: clients that send
+  `anonymous` stay on the public tier. A recognised request gets an
+  `x-rpc-client: <name>` response header, so a mistyped key is easy to spot.
+- A client spends its own budget (`max_requests_per_second`, none when unset)
+  instead of the per-IP and global public ones, is not refused by
+  `max_queue_size`, and goes ahead of waiting public requests. WSS work still
+  comes first in the node queue, and the `depin*` per-IP quota applies to
+  everyone.
+- In Docker, put the JSON array in `PROXY_HTTP_CLIENTS` in `.env`, wrapped in
+  single quotes.
+
+### Opt-in methods and `getnetworkinfo`
+
+`gettxoutsetinfo`, `getmininginfo`, `getconnectioncount` and `getnettotals`
+are read-only but stay out of the public whitelist: they are slow or only
+useful to operators. Open them for every client with `http.extra_methods`
+(`PROXY_HTTP_EXTRA_METHODS`, comma separated) or for one client with its
+`extra_methods`. Any other name stops the service at start. `gettxoutsetinfo`
+scans the whole UTXO set: it is cached per block, but while it runs it holds
+one slot of the node queue that WSS shares, so grant it to the client that
+needs it rather than to everyone.
+
+`getnetworkinfo` is public and reduced to `version`, `subversion`,
+`protocolversion`, `localservices`, `localrelay`, `timeoffset`,
+`networkactive`, `connections`, `relayfee`, `incrementalfee` and `warnings`.
+`networks` (configured proxies, such as a Tor endpoint) and `localaddresses`
+(the node's public addresses) never leave the service, and a field a future
+node adds stays out until it is reviewed. WSS `rpc.call` returns the same
+reduced result, and `hello.wallet_rpc.methods` lists it.
+
+### HTTP without WSS
+
+With `http.enabled: true` and `wss.enabled: false` the service serves only
+the HTTP API: a drop-in for the retired `neurai-rpc-proxy`, with the same
+routes (`POST /rpc`, `GET /settings`, `/whitelist`, `/getCache`) and error
+bodies. It needs no auth token and no ZMQ. The listener comes from the
+`http` block:
+
+```json
+"http": { "enabled": true, "host": "0.0.0.0", "port": 19020, "tls_enabled": false, "tip_poll_interval_ms": 1000 }
+```
+
+As for WSS, `tls_enabled` defaults to `true`, and then `ssl_cert` and
+`ssl_key` are required. The per-block cache is cleared from a
+`getbestblockhash` poll every `tip_poll_interval_ms` (1 s by default, at least
+500); the mempool is not polled. With WSS enabled these keys are ignored. In
+Docker, set `PROXY_WSS_ENABLED=false` in `.env`: the listener keeps
+`PROXY_WSS_PORT`, `PROXY_BIND`, `PROXY_WSS_TLS_ENABLED` and the certificate
+settings.
 
 ## Status
 
@@ -546,7 +621,7 @@ reachable from the public network. To consume it from the host, exec into
 the container or add a localhost port mapping in your compose file.
 
 ```text
-$ docker compose -f docker/testnet/docker-compose.yml exec rpc-proxy wget -qO- http://127.0.0.1:19021/stats
+$ docker compose -f docker/testnet/docker-compose.yml exec wallet-services wget -qO- http://127.0.0.1:19021/stats
 {"uptime_s":1234,"sessions":{"sessionCount":3},"subscriptions":{"distinctAddresses":7,...},
  "chain":{"tip":{"height":76820,...},...},"node":{"syncing":false,...},"zmq":{...}}
 ```
@@ -580,8 +655,9 @@ docker compose -f docker/testnet/docker-compose.yml -f tests/docker-compose.yml 
 port (one value feeds both the node and the proxy's upstream URL), the node
 branch and source commit (testnet) or image tag (mainnet), the WSS auth token,
 the published port and bind interface, the public HTTP endpoint,
-`PROXY_TRUSTED_PROXIES`, the `depin*` quota and, on testnet, the DePIN pool
-token and wallet. Everything structural (indexes, ZMQ
+`PROXY_TRUSTED_PROXIES`, the `depin*` quota, the service mode
+(`PROXY_WSS_ENABLED`), the HTTP opt-in methods and trusted clients and, on
+testnet, the DePIN pool token and wallet. Everything structural (indexes, ZMQ
 wiring, paths, healthchecks) stays in the compose file. Every variable has the
 same default in `.env.example` and in the compose file, so a stack starts
 without a `.env`; the template is what gets updated when a variable appears.
@@ -694,6 +770,15 @@ self-signed cert in-container at startup.
 ├── rpcError.js               # normalizes @neuraiproject/neurai-rpc rejections
 ├── clientIp.js               # trusted_proxy_ips + X-Forwarded-For (HTTP and WSS)
 ├── depinRateLimit.js         # per-IP depin* quota shared by HTTP and WSS
+├── rpcResults.js             # results reduced before they leave (getnetworkinfo), HTTP and WSS
+├── http/
+│   ├── index.js              # POST /rpc: whitelist, rate limits, queue, per-block cache
+│   ├── router.js             # routes, JSON body parsing, CORS
+│   ├── clients.js            # trusted clients: key (Basic/Bearer) or IP/CIDR
+│   ├── whitelist.js          # public methods + opt-in EXTRA_METHODS
+│   ├── cache-service.js      # methods cached until the next block
+│   ├── standalone.js         # HTTP listener without WSS (tip poll clears the cache)
+│   └── static.js             # www/ files
 ├── wss/
 │   ├── index.js              # config validation + start() + stats
 │   ├── server.js             # https/http + ws upgrade, auth, rate limit
@@ -719,7 +804,7 @@ self-signed cert in-container at startup.
 │   │   └── docker-compose.yml    # testnet node + proxy stack
 │   ├── mainnet/
 │   │   └── docker-compose.yml    # mainnet node + proxy stack
-│   ├── rpc-proxy/                # proxy image (shared)
+│   ├── wallet-services/          # service image (shared)
 │   └── node/                     # Neurai node image (shared)
 └── tests/
     ├── docker-compose.yml    # E2E test compose overlay
@@ -806,7 +891,7 @@ and `unsafe_v1_amounts` to decide when `wss/1` can be retired.
 The Docker proxy now builds the **local repository** with `npm ci --omit=dev`:
 
 ```sh
-docker build -f docker/rpc-proxy/Dockerfile -t neurai-wallet-services:1.1.1 .
+docker build -f docker/wallet-services/Dockerfile -t neurai-wallet-services:1.1.1 .
 npm test -- --runInBand
 ```
 
@@ -898,7 +983,8 @@ that clients pin on first use; back that wallet up from now on (see
 `NEURAI_DEPIN_WALLET`). Before routing traffic, check on the node itself that
 `neurai-cli -datadir=/data getblockhash 0` prints the genesis above and that
 `/usr/local/share/neurai/source-commit` matches `NODE_SOURCE_COMMIT`.
-`getnetworkinfo` is not exposed through the service.
+Through the service `getnetworkinfo` is reduced and does not show the source
+commit.
 
 ### Privacy-pool RPC over HTTP and WSS
 
@@ -938,3 +1024,44 @@ template or compose default cannot override it. Check
 failover node has the required validation rules, history and indexes.
 Same genesis alone does not prove pool capability. This does not activate
 privacy profiles on mainnet or change either network's ports.
+
+## Unreleased: HTTP API without neurai-rpc-proxy
+
+Everything the retired `neurai-rpc-proxy` offered is now here, so the services
+still pointed at it can move:
+
+- [HTTP without WSS](#http-without-wss): `wss.enabled: false` serves the HTTP
+  API alone (`PROXY_WSS_ENABLED=false` in Docker), with no auth token or ZMQ.
+- [Trusted HTTP clients](#trusted-http-clients): a key (Basic auth password
+  or Bearer token) or an address range gives a backend its own budget,
+  priority over public requests and optional extra methods
+  (`PROXY_HTTP_CLIENTS`).
+- [Opt-in methods](#opt-in-methods-and-getnetworkinfo): `gettxoutsetinfo`,
+  `getmininginfo`, `getconnectioncount` and `getnettotals`, for everyone
+  (`PROXY_HTTP_EXTRA_METHODS`) or per client. Unknown names stop the start.
+- `getnetworkinfo` is exposed over HTTP and WSS `rpc.call`, without
+  `networks` and `localaddresses`. The web wallet reads its `relayfee`.
+
+Moving a client from the proxy:
+
+- Routes, request format and the `Not in whitelist` error are unchanged.
+  Node JSON-RPC errors are `{error: {message, code}}`; the proxy nested the
+  library's rejection one level deeper (`{error: {error: {message, code}}}`).
+- The proxy had no general rate limit. A backend that calls from one address
+  needs a [trusted client](#trusted-http-clients) entry; its existing RPC
+  password becomes the key.
+- `signmessagewithprivkey` stays out: clients sign locally.
+- DePIN protocol 2 goes through `POST /rpc`, so one service per network can
+  serve the hosts that used to point at separate DePIN proxies.
+
+Deploying this version: the Compose service is now `wallet-services` (it was
+`rpc-proxy`) and its image is built from `docker/wallet-services/`. The first
+`up` after updating must remove the old container, which still holds the
+published port:
+
+```sh
+docker compose -f docker/testnet/docker-compose.yml up -d --build --remove-orphans
+```
+
+Use `docker compose exec wallet-services …` from now on. The host reverse
+proxy needs no change: it points at the published port, not at the container.

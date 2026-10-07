@@ -28,15 +28,15 @@ services:
 
     # v1.0.6 stores its datadir and configuration directly in /data. Its
     # entrypoint only generates /data/neurai.conf when absent, without our ZMQ
-    # settings. Mount the repository's config read-only so rpc-proxy keeps its
+    # settings. Mount the repository's config read-only so wallet-services keeps its
     # ZMQ endpoint (tcp://neuraid:28332), plus the required RPC/index settings.
     # Edit ./neurai.conf to change them.
     volumes:
       - neurai_data_mainnet:/data
       - ./neurai.conf:/data/neurai.conf:ro
 
-    # Internal-only — the node is not reachable from the host. The rpc-proxy
-    # container talks to neuraid:19001 (RPC) and neuraid:28332 (ZMQ) over the
+    # Internal-only — the node is not reachable from the host. The
+    # wallet-services container talks to neuraid:19001 (RPC) and neuraid:28332 (ZMQ) over the
     # neurai_net_mainnet bridge. Use `docker compose exec neuraid neurai-cli ...`
     # for CLI access.
     networks:
@@ -56,11 +56,11 @@ services:
         soft: 65536
         hard: 65536
 
-  rpc-proxy:
+  wallet-services:
     build:
       # Build the local checkout and its committed lockfile.
       context: ../..
-      dockerfile: docker/rpc-proxy/Dockerfile
+      dockerfile: docker/wallet-services/Dockerfile
     restart: unless-stopped
 
     logging:
@@ -91,7 +91,9 @@ services:
       # The reverse proxy must OVERWRITE the header ($remote_addr), never
       # append to it ($proxy_add_x_forwarded_for).
       PROXY_TRUSTED_PROXIES: "${PROXY_TRUSTED_PROXIES:-127.0.0.1,::1,::ffff:127.0.0.1}"
-      PROXY_WSS_ENABLED: "true"
+      # false = the HTTP API alone, without the /push WebSocket: no auth token
+      # or ZMQ needed, same port and bind (see .env).
+      PROXY_WSS_ENABLED: "${PROXY_WSS_ENABLED:-true}"
       PROXY_WSS_PORT: "${PROXY_WSS_PORT:-19010}"
       PROXY_WSS_PATH: "/push"
       PROXY_WSS_AUTH_TRANSPORT: "sec-websocket-protocol"
@@ -102,8 +104,12 @@ services:
       PROXY_HTTP_ENVIRONMENT: "Neurai Mainnet"
       PROXY_HTTP_ENDPOINT: "${PROXY_HTTP_ENDPOINT:-https://rpc-main.neurai.org/rpc}"
       PROXY_HTTP_MAX_RPS_PER_IP: "${PROXY_HTTP_MAX_RPS_PER_IP:-20}"
+      # Opt-in read-only methods for every client, and trusted clients (own
+      # budget, priority, extra methods; JSON array). Both come from .env.
+      PROXY_HTTP_EXTRA_METHODS: "${PROXY_HTTP_EXTRA_METHODS:-}"
+      PROXY_HTTP_CLIENTS: "${PROXY_HTTP_CLIENTS:-[]}"
       # Default deployment: behind a host reverse proxy that terminates TLS
-      # (HestiaCP / nginx / Caddy / etc). The proxy listens on plain ws://
+      # (HestiaCP / nginx / Caddy / etc). The service listens on plain ws://
       # internally and the reverse proxy on the host adds TLS + LE renewal.
       #
       # In HestiaCP: add the (sub)domain, enable Let's Encrypt in the UI, and
@@ -130,7 +136,7 @@ services:
       #       proxy_set_header X-Forwarded-Proto $scheme;
       #   }
       #
-      # To run the proxy with its own TLS (self-signed dev cert or LE files
+      # To run the service with its own TLS (self-signed dev cert or LE files
       # mounted from the host), set PROXY_WSS_TLS_ENABLED=true.
       # PROXY_WSS_AUTOGEN_CERT=true generates a self-signed cert for dev.
       PROXY_WSS_TLS_ENABLED: "false"

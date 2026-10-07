@@ -1,7 +1,8 @@
 // Polling fallback for chain + mempool events when ZMQ is unavailable or
 // drops messages. Cheap: just compares getbestblockhash and getrawmempool
 // against the last known state. When a change is observed, calls the same
-// handlers ZMQ would have invoked.
+// handlers ZMQ would have invoked. Without an onMempoolAdded handler (the
+// HTTP-only service only follows blocks) the mempool is not polled at all.
 
 const { callRPC } = require("./rpc");
 
@@ -59,12 +60,15 @@ function start(config, handlers) {
 
   // Stagger first ticks so we don't slam the node at startup.
   setTimeout(() => pollBlock(), 500);
-  setTimeout(() => pollMempool(), 1500);
-
   const blockTimer = setInterval(pollBlock, blockIntervalMs);
-  const mempoolTimer = setInterval(pollMempool, mempoolIntervalMs);
   if (blockTimer.unref) blockTimer.unref();
-  if (mempoolTimer.unref) mempoolTimer.unref();
+
+  let mempoolTimer = null;
+  if (handlers.onMempoolAdded) {
+    setTimeout(() => pollMempool(), 1500);
+    mempoolTimer = setInterval(pollMempool, mempoolIntervalMs);
+    if (mempoolTimer.unref) mempoolTimer.unref();
+  }
 
   return { blockTimer, mempoolTimer };
 }

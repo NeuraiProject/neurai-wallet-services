@@ -44,7 +44,7 @@ const whitelist = [
   "getspentinfo",
   "gettxout",
   "gettxoutproof",
-  // "gettxoutsetinfo", this method is not "dangerous" but it takes TOO long time
+  // "gettxoutsetinfo", // not dangerous but slow: opt-in, see EXTRA_METHODS
   //"preciousblock",
   //"pruneblockchain",
   //"savemempool",
@@ -76,7 +76,7 @@ const whitelist = [
   //== Mining ==
   // "getblocktemplate",
   //"getkawpowhash",
-  //"getmininginfo",
+  //"getmininginfo", // opt-in, see EXTRA_METHODS
   "getnetworkhashps",
   //"pprpcsb",
   //"prioritisetransaction",
@@ -87,9 +87,9 @@ const whitelist = [
   //"clearbanned",
   //"disconnectnode",
   //"getaddednodeinfo",
-  //"getconnectioncount",
-  //"getnettotals",
-  //"getnetworkinfo",
+  //"getconnectioncount", // opt-in, see EXTRA_METHODS
+  //"getnettotals",       // opt-in, see EXTRA_METHODS
+  "getnetworkinfo", // reduced by rpcResults.js: no proxies, no local addresses
   //"getpeerinfo",
   //"listbanned",
   //"ping",
@@ -253,6 +253,21 @@ const whitelist = [
      */
 ];
 
+/*
+  Read-only methods a deployment may add on top of the whitelist, for every
+  client (http.extra_methods) or for one client key (http.clients[].extra_methods).
+  They are left out of the public list because they are slow or only useful
+  to operators, not because they are unsafe. Nothing outside this list can be
+  added by configuration: a typo or a pasted list must never open stop,
+  dumpprivkey or a wallet call.
+*/
+const EXTRA_METHODS = [
+  "gettxoutsetinfo",    // scans the whole UTXO set (coins in circulation); cached per block
+  "getmininginfo",
+  "getconnectioncount",
+  "getnettotals",
+];
+
 function isWhitelisted(method) {
   const inc = whitelist.includes(method);
   return inc;
@@ -260,4 +275,5 @@ function isWhitelisted(method) {
 module.exports = {
   whitelist,
   isWhitelisted,
+  EXTRA_METHODS,
 };

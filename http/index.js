@@ -1,6 +1,8 @@
 const { default: PQueue } = require("p-queue");
 const { whitelist, isWhitelisted } = require("./whitelist");
+const { createClients, parseExtraMethods } = require("./clients");
 const cacheServiceMod = require("./cache-service");
+const { filterRpcResult } = require("../rpcResults");
 const { createHandler, sendJson } = require("./router");
 const { toClientError, getRPCErrorMessage, describeForLog } = require("../rpcError");
 const { clientIp, resolveTrustedProxies } = require("../clientIp");
@@ -38,6 +40,8 @@ function create(rawCfg, globalConfig, injected = {}) {
     max_queue_size: positiveInt(rawCfg.max_queue_size, 500, "max_queue_size"),
     rate_limiter_ttl_ms: positiveInt(rawCfg.rate_limiter_ttl_ms, 5 * 60 * 1000, "rate_limiter_ttl_ms"),
     max_rate_limiter_ips: positiveInt(rawCfg.max_rate_limiter_ips, 10000, "max_rate_limiter_ips"),
+    // Opt-in methods from EXTRA_METHODS for every client; keyed clients may add their own.
+    extra_methods: parseExtraMethods(rawCfg.extra_methods, "extra_methods"),
   };
   if (cfg.max_requests_per_second_per_ip > cfg.max_requests_per_second) throw new Error("[HTTP] max_requests_per_second_per_ip cannot exceed max_requests_per_second");
   // trusted_proxy_ips is shared with WSS and lives at the root of config.json;
@@ -52,6 +56,10 @@ function create(rawCfg, globalConfig, injected = {}) {
   const cache = cacheServiceMod.create();
   const limits = new Map();
   const globalLimit = createRateLimiter(cfg.max_requests_per_second);
+  const clients = createClients(rawCfg.clients);
+  const clientLimiters = new Map();
+  // One lookup per request: tryAccept runs before routing, handleRpc after it.
+  const clientOf = new WeakMap();
   let numberOfRequests = 0;
   let lastBlockHash = null;
 
@@ -61,7 +69,27 @@ function create(rawCfg, globalConfig, injected = {}) {
   const limiterPruneTimer = setInterval(pruneLimiters, Math.min(cfg.rate_limiter_ttl_ms, 60000));
   if (limiterPruneTimer.unref) limiterPruneTimer.unref();
 
+  function clientFor(req) {
+    if (!clientOf.has(req)) clientOf.set(req, clients.identify(req, clientIp(req, trustedProxies)));
+    return clientOf.get(req);
+  }
+
+  function isAllowed(method, client) {
+    return isWhitelisted(method) || cfg.extra_methods.has(method) || (client !== null && client.extraMethods.has(method));
+  }
+
   function tryAccept(req) {
+    // A trusted client spends its own budget, never the public per-IP or global one.
+    const client = clientFor(req);
+    if (client) {
+      if (!client.maxRequestsPerSecond) return true;
+      let limiter = clientLimiters.get(client.name);
+      if (!limiter) {
+        limiter = createRateLimiter(client.maxRequestsPerSecond);
+        clientLimiters.set(client.name, limiter);
+      }
+      return limiter.tryAccept();
+    }
     const ip = clientIp(req, trustedProxies);
     let entry = limits.get(ip);
     if (!entry) {
@@ -83,8 +111,11 @@ function create(rawCfg, globalConfig, injected = {}) {
   async function handleRpc(body, req, res) {
     const method = body && body.method;
     const params = body && body.params;
+    const client = clientFor(req);
     countRequest();
-    if (!isWhitelisted(method)) return sendJson(res, 404, { error: "Not in whitelist", description: `Method ${method} is not supported` });
+    // Lets an operator check that a key was recognised (a wrong key silently gets the public tier).
+    if (client) res.setHeader("x-rpc-client", client.name);
+    if (!isAllowed(method, client)) return sendJson(res, 404, { error: "Not in whitelist", description: `Method ${method} is not supported` });
     if (method === "listaddressesbyasset" && Array.isArray(params) && params[1] === true) {
       return sendJson(res, 404, { error: "Not in whitelist", description: `Method ${method} with totalCount set to true is not whitelisted. Please use ${method} without totalCount = true` });
     }
@@ -99,7 +130,8 @@ function create(rawCfg, globalConfig, injected = {}) {
         return sendJson(res, 429, { error: "Too many requests", description: refusalDescription(verdict, depinLimiter) }, { "retry-after": String(verdict.retryAfterSeconds) });
       }
     }
-    if (queue.size >= cfg.max_queue_size) return sendJson(res, 503, { error: "queue full" }, { "retry-after": "1" });
+    // max_queue_size bounds the public backlog; trusted clients are bounded by their own budget.
+    if (!client && queue.size >= cfg.max_queue_size) return sendJson(res, 503, { error: "queue full" }, { "retry-after": "1" });
     try {
       const result = await queue.add(async () => {
         if (req.aborted || res.destroyed) return undefined;
@@ -108,10 +140,10 @@ function create(rawCfg, globalConfig, injected = {}) {
         if (cached) return cached;
         // Low priority shares the node-wide queue with WSS, whose work uses
         // the default priority and therefore jumps ahead of pending HTTP work.
-        const promise = rpc(method, params, -1);
+        const promise = rpc(method, params, -1).then((value) => filterRpcResult(method, value));
         if (cache.shouldCache(method)) { cache.put(method, params, promise); promise.catch(() => cache.remove(method, params, promise)); }
         return promise;
-      });
+      }, { priority: client ? 1 : 0 });
       if (req.aborted || res.destroyed) return;
       // neurai-rpc 0.4.7 resolved `undefined` for a JSON-RPC error delivered
       // with HTTP 200, which left the request without a response. 0.5.0+
@@ -129,7 +161,7 @@ function create(rawCfg, globalConfig, injected = {}) {
   }
 
   function getStats() {
-    return { queue: { size: queue.size, pending: queue.pending }, cache_items: cache.getKeys().length, rate_limiter_ips: limits.size, numberOfRequests: numberOfRequests.toLocaleString(), depin_rate_limit: depinLimiter.stats() };
+    return { queue: { size: queue.size, pending: queue.pending }, cache_items: cache.getKeys().length, rate_limiter_ips: limits.size, clients: clients.count, numberOfRequests: numberOfRequests.toLocaleString(), depin_rate_limit: depinLimiter.stats() };
   }
   function getCache() {
     const result = { numberOfItemsInCache: cache.getKeys().length };
@@ -137,7 +169,7 @@ function create(rawCfg, globalConfig, injected = {}) {
     result.queueSize = queue.size; result.numberOfRequests = numberOfRequests.toLocaleString(); result.methods = cache.getMethods(); result.nodes = nodeDeps.getNodes(); result.depinRateLimit = depinLimiter.stats();
     return result;
   }
-  const handleRequest = createHandler({ whitelist, getCache, settings: async () => ({ heading: cfg.heading, environment: cfg.environment, endpoint: cfg.endpoint, exact_amounts: true, amounts: "rpc-native-units", numeric_encoding: "safe-number-or-string", ...(await nodeDeps.getIdentity()) }), serveWww: cfg.serve_www, tryAccept, handleRpc });
+  const handleRequest = createHandler({ whitelist: [...whitelist, ...cfg.extra_methods], getCache, settings: async () => ({ heading: cfg.heading, environment: cfg.environment, endpoint: cfg.endpoint, exact_amounts: true, amounts: "rpc-native-units", numeric_encoding: "safe-number-or-string", ...(await nodeDeps.getIdentity()) }), serveWww: cfg.serve_www, tryAccept, handleRpc });
   return { handleRequest, getStats, onBlock(hash) { if (hash && hash !== lastBlockHash) { lastBlockHash = hash; cache.clear(); } } };
 }
 

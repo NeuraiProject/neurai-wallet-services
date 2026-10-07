@@ -689,8 +689,8 @@ Defaults (all overridable in `.env`):
   Mainnet ships with a `CHANGE-ME-mainnet-wss-token` placeholder —
   set `PROXY_WSS_AUTH_TOKEN` in `.env` before any internet-facing run.
 - Testnet builds the node's `DePIN-Test` branch at `NODE_SOURCE_COMMIT`
-  (default `e64965d7311ff51d0f3a9a3a48d8e75992122b5c`, the reviewed C6-capable
-  node) with DePIN protocol 2 enabled
+  (default `a9f7ca593a8d5121d6bb07bbb55670ae5a6a09e3`, the reviewed C6-capable
+  node with the asset-database read fixes) with DePIN protocol 2 enabled
   (`NEURAI_DEPIN_ENABLED=1`, `NEURAI_DEPIN_TOKEN`, wallet on); the proxy
   relays `depin*` through the RPC port with `PROXY_DEPIN_RATE_LIMIT=60` /
   `PROXY_DEPIN_BAN_MINUTES=10`. Mainnet runs the official `v1.0.6` image,

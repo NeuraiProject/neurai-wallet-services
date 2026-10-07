@@ -13,10 +13,11 @@ services:
       dockerfile: Dockerfile
       args:
         BRANCH: "${NODE_BRANCH:-DePIN-Test}"
-        # Reviewed C6 commit of NODE_BRANCH (same reset-testnet genesis).
+        # Reviewed commit of NODE_BRANCH (same reset-testnet genesis): C6, plus
+        # asset-database reads that no longer force a full flush per call.
         # Pinning it also forces Docker to rebuild instead of reusing a cached
         # clone of the branch from before the reset.
-        SOURCE_COMMIT: "${NODE_SOURCE_COMMIT:-e64965d7311ff51d0f3a9a3a48d8e75992122b5c}"
+        SOURCE_COMMIT: "${NODE_SOURCE_COMMIT:-a9f7ca593a8d5121d6bb07bbb55670ae5a6a09e3}"
     restart: unless-stopped
 
     logging:

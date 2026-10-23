@@ -4,7 +4,7 @@ Backend services for Neurai mobile and light wallets. Holds a persistent
 WebSocket per client, lets it subscribe to addresses, and pushes events when
 balances, mempool state, the chain tip or the node's sync state change — so
 the wallet never polls. Also relays the Neurai DePIN messaging RPCs
-(protocol 2) over the same connection and over HTTP. Future home for native
+(RPC 5) over the same connection and over HTTP. Future home for native
 address indexing.
 
 This is **not** a generic Electrum/ElectrumX-compatible server. The wire
@@ -80,7 +80,7 @@ POST-only route answers `GET` with `405` and `Allow: POST`.
 - Node-health monitoring: a 10s poll of `getblockchaininfo` gates methods
   that depend on a synced chain and emits `node.synced` / `node.syncing`
   on transitions.
-- DePIN protocol 2 relay: `depin.*` over WSS and `depin*` over `POST /rpc`,
+- DePIN RPC 5 relay: `depin.*` over WSS and `depin*` over `POST /rpc`,
   with one per-IP quota shared by both transports.
 - Docker setup for the testnet service stack, with tests kept under `tests/`.
 
@@ -221,7 +221,7 @@ with that fix (DePIN-Test `b96c49f` and `a9f7ca5` for the asset reads,
 - `address.get_state` with composite cursor pagination (history + UTXOs),
   assets projection, and per-asset history rows
 - `tx.broadcast`
-- `depin.*` — DePIN protocol 2 name translations over the node RPC
+- `depin.*` — DePIN RPC 5 name translations over the node RPC
 - Push events: `chain.tip`, `chain.reorg`, `address.changed` (with
   `touched_assets` in delta), `node.synced`, `node.syncing`
 - ZMQ subscriber (`zeromq` optional dep) + mempool polling fallback
@@ -298,28 +298,29 @@ values and negative deltas; parse them as `BigInt`. The examples below use
 | `depin.list_holders` | `[asset]` | `listdepinholders` result | **yes** |
 | `depin.list_addresses` | `[asset, count?, start?]` | `listdepinaddresses` result | **yes** |
 | `depin.get_pubkey` | `[address]` | `getpubkey` result | **yes** |
-| `depin.ancestor_recipients` | `[token, max_results?, stop_at?]` | `depingetancestorrecipients` reply | **yes** |
-| `depin.msg_info` | `[]` | `{body, poolsig}` | no |
-| `depin.pool_stats` | `[]` | `{body, poolsig}` | no |
-| `depin.mcp_status` | `[]` | `{body, poolsig}` | no |
-| `depin.challenge` | `[token, address, timestamp_ms, signature, type?]` | `{encrypted, poolsig}` | no |
-| `depin.receive_msg` | `[token, address, challenge, signature, timestamp?, after_hash?, limit?]` | `{encrypted, poolsig}` | no |
-| `depin.sections` | `[]` (public names) or `[address, scope, challenge, signature]` | `{body, poolsig}` / `{encrypted, poolsig}` | no |
-| `depin.clear_msg` | `[scope, address, challenge, signature, mode?]` | `{encrypted, poolsig}` | no |
-| `depin.submit_msg` | `[{sender, encrypted}]` | `{encrypted, poolsig}` | no |
+| `depin.ancestor_recipients` | `[request]` / `{request}` | opaque RPC 5 signed reply | no |
+| `depin.msg_info` | `[request]` / `{request}` | opaque RPC 5 signed reply | no |
+| `depin.pool_stats` | `[request]` / `{request}` | opaque RPC 5 signed reply | no |
+| `depin.mcp_status` | `[request]` / `{request}` | opaque RPC 5 signed reply | no |
+| `depin.challenge` | `[request]` / `{request}` | opaque RPC 5 signed reply | no |
+| `depin.receive_msg` | `[request]` / `{request}` | opaque RPC 5 signed reply | no |
+| `depin.receive_seq` | `[request]` / `{request}` | opaque RPC 5 signed reply | no |
+| `depin.sections` | `[request]` / `{request}` | opaque RPC 5 signed reply | no |
+| `depin.clear_msg` | `[request]` / `{request}` | opaque RPC 5 signed reply | no |
+| `depin.submit_msg` | `[request]` / `{request}` | opaque RPC 5 signed reply | no |
 
 Every `depin.*` method is a name translation over the corresponding node RPC:
-params are forwarded positionally and untouched (`[...]` or `{args: [...]}`),
+request objects are forwarded intact (`[...]` or `{args: [...]}`),
 and the reply is the node's. The pool methods are not gated by this
 service's sync state because the node decides access against its own index.
-Retired with protocol 2 and answered with `1004`: `depin.send_msg`,
+Retired since protocol 2 and answered with `1004`: `depin.send_msg`,
 `depin.get_msg`, `depin.pool_pkey`, `depin.pool_content`,
 `depin.list_pq_addresses`. The protocol 1 param shapes `{address}` and
 `{address, signature, args}` are refused with `1003`.
 
 DePIN node errors arrive as `1005` with the node's `message` and its JSON-RPC
-`code`; an upstream failure is `1005` with `"upstream RPC unavailable"` and
-`code: null`. Over the per-IP quota (see below) the answer is `1007` with
+`node_code`; an upstream failure is `1005` with `"upstream RPC unavailable"` and
+`node_code: null`. Over the per-IP quota (see below) the answer is `1007` with
 `retry_after_seconds`.
 
 #### Address types
@@ -582,74 +583,38 @@ The wallet can display a real progress bar and retry every `retry_after_seconds`
 When the node finishes syncing, the server pushes `node.synced` to all
 connected sessions — no need to keep polling.
 
-### DePIN protocol 2
+### DePIN RPC 5
 
-DePIN messaging protocol 2 is served by the node on its **own RPC port**: there
-is no DePIN port, gateway or URL any more. This service relays the
-whitelisted `depin*` RPCs over WSS (`depin.*`) and over `POST /rpc`; it holds no
-keys and no challenges. The full specification is
-`doc/depin-messaging-protocol.md` in the node repository; in short, the client:
+Use neurai-depin-msg 4.x with a node implementing RPC 5. The service keeps no client keys/challenges and never decrypts or signs a client's request. Every messaging RPC, bootstrap included, receives one request object. WSS takes `[request]`, `{args:[request]}` or `{request}`; HTTP forwards the standard single JSON-RPC request parameter. Protocol 2/3/4 signatures and positional messaging forms are rejected.
 
-1. Calls `depingetmsginfo`, refuses `protocol != 2`, and pins
-   `(service, token, depinpoolpkey)` — on first contact as TOFU material,
-   afterwards verified. A changed key is an alert, never a silent re-pin.
-2. Verifies `poolsig` on **every** reply against the pinned key
-   (`DEPIN-RESP|method|token|address|challenge|sha256hex(body or encrypted)`)
-   before decoding or decrypting anything.
-3. Signs `DEPIN-REQ|<type>|<token>|<address>|<unix ms>` with the holder key
-   (`signmessage`-compatible) and calls `depinchallenge`; decrypts the bound
-   reply locally (ECIES for its revealed public key) to get the challenge.
-4. Signs `DEPIN-GET|<token>|<address>|<challenge>` (or `DEPIN-CLEAR|…` for an
-   owner purge) and calls `depinreceivemsg` / `depinlistsections` /
-   `depinclearmsg`; keeps `next_challenge` from each reply to chain reads.
-5. Publishes with `depinsubmitmsg({sender, encrypted})`: the serialized,
-   signed message, encrypted for the recipients from
-   `depingetancestorrecipients`, wrapped in an ECIES envelope for the pool
-   key. Bare hex is not accepted by the node.
+| WSS alias | Node RPC |
+| --- | --- |
+| `depin.msg_info` | `depingetmsginfo` |
+| `depin.pool_stats` | `depinpoolstats` |
+| `depin.mcp_status` | `depinmcpstatus` |
+| `depin.ancestor_recipients` | `depingetancestorrecipients` |
+| `depin.challenge` | `depinchallenge` |
+| `depin.receive_seq` | `depinreceiveseq` |
+| `depin.receive_msg` | `depinreceivemsg` |
+| `depin.sections` | `depinlistsections` |
+| `depin.submit_msg` | `depinsubmitmsg` |
+| `depin.clear_msg` | `depinclearmsg` |
 
-Over WSS:
-
-```text
-client → depin.msg_info([])                                   → {body, poolsig}
-client → depin.challenge([token, address, ms, sigReq, "receive"])
-                                                              → {encrypted, poolsig}
-client verifies poolsig, decrypts → {challenge, expires_in, type}
-client → depin.receive_msg([token, address, challenge, sigGet, 0, "", 50])
-                                                              → {encrypted, poolsig}
-client verifies poolsig, decrypts → {messages, has_more, next_challenge, ...}
+```json
+{"id":1,"method":"depin.msg_info","params":[{"protocol":5,"request_id":"<64 lowercase random hex characters>","timestamp_ms":1792660000000}]}
 ```
 
-Over HTTP the same calls are `POST /rpc` bodies
-(`{"method":"depinchallenge","params":[token, address, ms, sig, "receive"]}`).
+The client binds each response to its locally computed request hash, expected genesis, pinned pool, instance and confidentiality kind, verifies `poolsig`, then opens the body. Private requests sign the complete method/arguments and membership revision. A signed membership change means refreshing recipients and renewing all old receive/admin nonces; preserve the admission cursor if its stream remains unchanged. A restart requires fresh bootstrap under the existing pin. Do not automatically replay ambiguous writes.
 
-The node's wallet helpers (`depinsignrequest`, `depinsignchallenge`,
-`depindecrypt`, `depinsendmsg`, `depingetmsg`, `depinpoolpkey`) are never
-exposed: they exist for `neurai-cli` on a node that holds the keys, and a
-remote client implements the same signing and ECIES operations itself (a
-JavaScript implementation lives in `@neuraiproject/neurai-depin-msg`).
+All request-bound methods remain uncached, including public directory/bootstrap/stats. A multi-node service selects the exact healthy pool/instance targeted by a signed request, never rewrites it and never broadcasts or retries a private write. Discovery is advisory routing metadata; it cannot replace client signature verification.
 
-**Abuse control** is split. The node limits challenges issued and messages
-accepted per *address* and minute (`depinratelimit`, counting only requests
-signed by that address). This service limits `depin*` requests per *origin
-IP* and minute (`depin.rate_limit`, default 60) and blocks the IP for
-`depin.ban_minutes` (default 10) when it goes over: HTTP answers `429` with
-`Retry-After`, WSS answers `1007` with `retry_after_seconds`. One limiter is
-shared by both transports, keyed by the IP derived through
-`trusted_proxy_ips`, so switching transport does not reset the count. The
-cached chain queries (`checkdepinvalidity`, `listdepinholders`,
-`listdepinaddresses`, `getpubkey`) do not count. Nothing that comes from the
-pool is cached: its state is off-chain and every reply is signed with the
-pool key that is live right now.
+WSS and HTTP preserve numeric tokens and reject duplicate keys/numeric impersonation. Cursor values beyond 2^53 reach the node as exact JSON numbers. Node transport errors retain their data: HTTP uses `error.code` and `error.data`; WSS uses error `1005` with `node_code` and `data`. Signed operation errors remain inside the opaque node reply. The client must verify/decrypt those itself.
 
-**Upgrading from the protocol 1 gateway:** the DePIN port (19002/19102),
-`depin_enabled`/`depin_url` in `config.json`, `NEURAI_DEPIN_ENABLED`/
-`NEURAI_DEPIN_URL` on the proxy, `POST /depin`, `POST /depin/challenge` and
-the WSS methods `depin.send_msg`, `depin.get_msg`, `depin.pool_pkey`,
-`depin.pool_content` are gone. `depin.challenge`, `depin.receive_msg`,
-`depin.submit_msg` and `depin.clear_msg` keep their names but take the
-protocol 2 positional contracts above. `@neuraiproject/neurai-rpc` 0.6.0
-removed its `/depin` TCP entry and `getDePinRPC`, and rejects JSON-RPC errors
-that previously resolved `undefined`.
+Legacy and strict ECDSA identities/ECIES 2 are supported by the node/SDK. A signed directory remains the pool's statement, not independent asset-ownership proof. PQ and ESP32 firmware/library changes are deferred. Local helpers such as `depinsignrpc`, `depindecrypt`, `depinsendmsg`, `depingetmsg` and `depinpoolpkey` are not public methods.
+
+Abuse control still shares one per-IP DePIN budget across HTTP/WSS. The node applies its own signature/current-permission checks and per-address quotas. Ordinary chain queries keep their existing positional contracts. Pool readiness is decided by the node itself rather than the service's address-index sync gate.
+
+The service requires the updated node. Existing Docker source/image choices are not changed or deployed automatically. The published RPC transport `@neuraiproject/neurai-rpc@0.8.0` is installed from npm, with integrity pinned in `package-lock.json`.
 
 ### Local stats endpoint (optional)
 
@@ -731,12 +696,13 @@ Defaults (all overridable in `.env`):
   Mainnet ships with a `CHANGE-ME-mainnet-wss-token` placeholder —
   set `PROXY_WSS_AUTH_TOKEN` in `.env` before any internet-facing run.
 - Testnet builds the node's `DePIN-Test` branch at `NODE_SOURCE_COMMIT`
-  (default `1e325225c65a1de4905147062fed1dd25d9d61c6`, the reviewed C6-capable
-  node with the database read fixes) with DePIN protocol 2 enabled
-  (`NEURAI_DEPIN_ENABLED=1`, `NEURAI_DEPIN_TOKEN`, wallet on); the proxy
-  relays `depin*` through the RPC port with `PROXY_DEPIN_RATE_LIMIT=60` /
-  `PROXY_DEPIN_BAN_MINUTES=10`. Mainnet runs the official `v1.0.6` image,
-  which has no protocol 2: the node answers `depin*` with an error.
+  (default `1e325225c65a1de4905147062fed1dd25d9d61c6`, the older C6-capable
+  node with the database read fixes). This default predates RPC 5: set
+  `NODE_SOURCE_COMMIT` to a compatible node revision before using the updated
+  messaging service. `NEURAI_DEPIN_ENABLED=1` and `NEURAI_DEPIN_TOKEN` configure
+  that node; they do not upgrade its protocol. The service relays `depin*`
+  through RPC with `PROXY_DEPIN_RATE_LIMIT=60` / `PROXY_DEPIN_BAN_MINUTES=10`.
+  Mainnet runs the official `v1.0.6` image, which has no RPC 5.
 - ZMQ subscriber connects to `tcp://neuraid:28332` automatically inside
   the Docker network. The `zeromq` npm package is in `optionalDependencies`;
   if it can't install (rare, glibc x64 has prebuilt binaries), the proxy
@@ -842,7 +808,7 @@ self-signed cert in-container at startup.
 │   ├── server.js             # https/http + ws upgrade, auth, rate limit
 │   ├── protocol.js           # message framing, error codes, version constants
 │   ├── methods.js            # core handlers (hello/ping/address.*/tx.broadcast)
-│   ├── depin-methods.js      # depin.* → node RPC name translations (protocol 2)
+│   ├── depin-methods.js      # depin.* → node RPC name translations (RPC 5)
 │   ├── common.js             # MethodError, requireHello, requireSynced
 │   ├── session.js            # per-connection state
 │   ├── subscriptions.js      # address → sessions fan-out map
@@ -1116,7 +1082,7 @@ Moving a client from the proxy:
   needs a [trusted client](#trusted-http-clients) entry; its existing RPC
   password becomes the key.
 - `signmessagewithprivkey` stays out: clients sign locally.
-- DePIN protocol 2 goes through `POST /rpc`, so one service per network can
+- DePIN RPC 5 goes through `POST /rpc`, so one service per network can
   serve the hosts that used to point at separate DePIN proxies.
 
 Deploying this version: the Compose service is now `wallet-services` (it was
@@ -1130,3 +1096,7 @@ docker compose -f docker/testnet/docker-compose.yml up -d --build --remove-orpha
 
 Use `docker compose exec wallet-services …` from now on. The host reverse
 proxy needs no change: it points at the published port, not at the container.
+
+## Published RPC 5 dependency
+
+This checkout uses the published `@neuraiproject/neurai-rpc@0.8.0`. Run `npm ci` before starting or testing; `package-lock.json` pins the registry tarball and its SHA-512 integrity. Docker installs the same dependency from the lockfile. No local package archives are required.

@@ -1,8 +1,8 @@
-const { readIdentity, sameChain, resolveExpectedChain } = require("./service-identity");
-const { resolveRpcTimeouts, withTimeout } = require("./rpcTimeout");
-const NeuraiRPC = require("@neuraiproject/neurai-rpc");
+const { readIdentity, sameChain, resolveExpectedChain } = require('./service-identity');
+const { resolveRpcTimeouts, withTimeout } = require('./rpcTimeout');
+const NeuraiRPC = require('@neuraiproject/neurai-rpc');
 
-const getConfig = require("./getConfig");
+const getConfig = require('./getConfig');
 const config = getConfig();
 const allNodes = [];
 let identity = null;
@@ -19,9 +19,9 @@ const expected = resolveExpectedChain(config, {
   testnet: NeuraiRPC.TESTNET_GENESIS_HASH,
 });
 if (expected.genesis_hash) {
-  console.log(`[config] node pool pinned to ${expected.network || "chain"} genesis ${expected.genesis_hash}`);
+  console.log(`[config] node pool pinned to ${expected.network || 'chain'} genesis ${expected.genesis_hash}`);
 } else {
-  console.log("[config] WARNING: no network/genesis_hash configured; the first healthy node defines the chain");
+  console.log('[config] WARNING: no network/genesis_hash configured; the first healthy node defines the chain');
 }
 
 // Every node call is bounded, health checks included: HTTP, WSS and the
@@ -30,13 +30,13 @@ const rpcTimeouts = resolveRpcTimeouts(config);
 
 // DePIN protocol 2 is served on the node's own RPC port: there is no DePIN
 // URL, port or gateway any more. The protocol 1 keys are ignored with a notice.
-const OBSOLETE_NODE_KEYS = ["depin_enabled", "depin_url"];
+const OBSOLETE_NODE_KEYS = ['depin_enabled', 'depin_url'];
 
 //At startup initialize all RPCs, you can have one or multiple Neurai nodes
 for (const node of config.nodes) {
   const obsolete = OBSOLETE_NODE_KEYS.filter((key) => node[key] !== undefined);
   if (obsolete.length > 0) {
-    console.log(`[config] node "${node.name}": ${obsolete.join(", ")} are obsolete (DePIN protocol 2 goes through neurai_url) and ignored`);
+    console.log(`[config] node "${node.name}": ${obsolete.join(', ')} are obsolete (DePIN protocol 2 goes through neurai_url) and ignored`);
   }
   const rpc = withTimeout(NeuraiRPC.getRPC(node.username, node.password, node.neurai_url), rpcTimeouts);
   allNodes.push({ name: node.name, rpc, neuraiUrl: node.neurai_url, active: false, healthError: null });
@@ -64,7 +64,7 @@ function healthCheck() {
       try {
         found = await readIdentity(node.rpc);
       } catch {
-        setHealth(node, false, "RPC health check failed");
+        setHealth(node, false, 'RPC health check failed');
         continue;
       }
       if (expected.genesis_hash && expected.genesis_hash !== found.genesis_hash) {
@@ -76,32 +76,44 @@ function healthCheck() {
         continue;
       }
       if (identity && !sameChain(identity, found)) {
-        setHealth(node, false, "failover chain mismatch");
+        setHealth(node, false, 'failover chain mismatch');
         continue;
       }
       try {
-        node.bestblockhash = await node.rpc("getbestblockhash", []);
+        node.bestblockhash = await node.rpc('getbestblockhash', []);
       } catch {
-        setHealth(node, false, "RPC health check failed");
+        setHealth(node, false, 'RPC health check failed');
         continue;
       }
       if (!identity) identity = found;
       setHealth(node, true, null);
     }
-  })().finally(() => { checking = null; });
+  })().finally(() => {
+    checking = null;
+  });
   return checking;
 }
 const healthTimer = setInterval(healthCheck, 10 * 1000);
 healthTimer.unref();
 healthCheck();
 
+const routeDepin = NeuraiRPC.createDepinNodeRouter(
+  () => allNodes.filter((node) => node.active),
+  () => require('crypto').randomBytes(32).toString('hex'),
+);
+async function getRPCNodeForRequest(method, params) {
+  if (!NeuraiRPC.isDepinRemoteMethod(method)) return getRPCNode();
+  if (!allNodes.some((node) => node.active)) await healthCheck();
+  return routeDepin(method, params);
+}
+
 function getRPCNode() {
-  const node = allNodes.find(n => n.active);
-  if (!node) throw new Error("No healthy node with validated chain identity");
+  const node = allNodes.find((n) => n.active);
+  if (!node) throw new Error('No healthy node with validated chain identity');
   return { rpc: node.rpc, name: node.name };
 }
 async function getIdentity() {
-  if (!allNodes.some(n => n.active)) await healthCheck();
+  if (!allNodes.some((n) => n.active)) await healthCheck();
   getRPCNode();
   return { ...identity, service_id: config.service_id || null };
 }
@@ -118,4 +130,4 @@ function getNodes() {
   return list;
 }
 
-module.exports = { getRPCNode, getNodes, getIdentity, expectedChain: expected };
+module.exports = { getRPCNodeForRequest, getRPCNode, getNodes, getIdentity, expectedChain: expected };

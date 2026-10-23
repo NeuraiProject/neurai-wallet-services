@@ -29,27 +29,27 @@ our own code is an upstream failure: the node could not be reached, refused
 our credentials, or answered something that is not JSON-RPC.
 */
 
-const UPSTREAM_UNAVAILABLE = "upstream RPC unavailable";
+const UPSTREAM_UNAVAILABLE = 'upstream RPC unavailable';
 
 function isObject(e) {
-  return e !== null && typeof e === "object";
+  return e !== null && typeof e === 'object';
 }
 
 function isRPCError(e) {
-  return isObject(e) && isObject(e.error) && typeof e.error.code === "number";
+  return isObject(e) && isObject(e.error) && typeof e.error.code === 'number';
 }
 
 function isNodeUnreachable(e) {
-  return isObject(e) && e.type === "ServerUnreachable";
+  return isObject(e) && e.type === 'ServerUnreachable';
 }
 
 function isNodeTimeout(e) {
-  return isObject(e) && e.type === "Timeout";
+  return isObject(e) && e.type === 'Timeout';
 }
 
 // Refused by this service (flushingReads.js); the node never saw the call.
 function isThrottled(e) {
-  return isObject(e) && e.type === "Throttled";
+  return isObject(e) && e.type === 'Throttled';
 }
 
 // Shape 2 without a JSON-RPC error body, shape 3 or a timeout. Diagnostics should use
@@ -58,51 +58,50 @@ function isThrottled(e) {
 function isUpstreamFailure(e) {
   if (!isObject(e) || isRPCError(e) || isThrottled(e)) return false;
   if (isNodeUnreachable(e) || isNodeTimeout(e)) return true;
-  return typeof e.status === "number" && e.status !== 200;
+  return typeof e.status === 'number' && e.status !== 200;
 }
 
 function getRPCErrorMessage(e) {
-  if (!e) return "";
-  if (typeof e === "string") return e;
+  if (!e) return '';
+  if (typeof e === 'string') return e;
   if (!isObject(e)) return String(e);
-  const candidates = [
-    e.error && e.error.message,
-    typeof e.error === "string" ? e.error : null,
-    e.description,
-    e.message,
-    e.statusText,
-  ];
+  const candidates = [e.error && e.error.message, typeof e.error === 'string' ? e.error : null, e.description, e.message, e.statusText];
   for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.length > 0) return candidate;
+    if (typeof candidate === 'string' && candidate.length > 0) return candidate;
   }
-  return "";
+  return '';
 }
 
 // JSON-RPC error code, or null when the failure carries none.
 function getRPCErrorCode(e) {
   if (!isObject(e)) return null;
-  if (isObject(e.error) && typeof e.error.code === "number") return e.error.code;
-  if (typeof e.code === "number") return e.code;
+  if (isObject(e.error) && typeof e.error.code === 'number') return e.error.code;
+  if (typeof e.code === 'number') return e.code;
   return null;
 }
 
 // What a client may see. Upstream failures get a neutral message: the status
 // line or body of the node's reply must not travel to the public side.
-function toClientError(e, fallback = "RPC request failed") {
+function toClientError(e, fallback = 'RPC request failed') {
   if (isUpstreamFailure(e)) return { upstream: true, code: null, message: UPSTREAM_UNAVAILABLE };
   const message = getRPCErrorMessage(e);
-  return { upstream: false, code: getRPCErrorCode(e), message: message || fallback };
+  return {
+    upstream: false,
+    code: getRPCErrorCode(e),
+    message: message || fallback,
+    ...(isObject(e.error?.data ?? e.data) ? { data: e.error?.data ?? e.data } : {}),
+  };
 }
 
 // One line for the operator's log. Never includes credentials or the body of
 // the upstream response.
 function describeForLog(e) {
-  if (isNodeUnreachable(e)) return `node unreachable: ${getRPCErrorMessage(e) || "no details"}`;
+  if (isNodeUnreachable(e)) return `node unreachable: ${getRPCErrorMessage(e) || 'no details'}`;
   if (isNodeTimeout(e)) return `node timeout: ${e.message}`;
   if (isThrottled(e)) return `throttled: ${e.message}`;
-  if (isUpstreamFailure(e)) return `upstream HTTP ${e.status}${e.statusText ? ` ${e.statusText}` : ""}`;
+  if (isUpstreamFailure(e)) return `upstream HTTP ${e.status}${e.statusText ? ` ${e.statusText}` : ''}`;
   const code = getRPCErrorCode(e);
-  const message = getRPCErrorMessage(e) || "unknown error";
+  const message = getRPCErrorMessage(e) || 'unknown error';
   return code === null ? message : `[${code}] ${message}`;
 }
 

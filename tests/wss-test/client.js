@@ -1,24 +1,22 @@
-const WebSocket = require("ws");
+const WebSocket = require('ws');
 
-const HOST = process.env.PROXY_HOST || "wallet-services";
-const PORT = process.env.PROXY_PORT || "19020";
-const PATH = process.env.PROXY_PATH || "/push";
-const SCHEME = process.env.PROXY_SCHEME || "wss";
-const TOKEN =
-  process.env.PROXY_TOKEN ||
-  "testnet-wss-token-do-not-use-in-production";
+const HOST = process.env.PROXY_HOST || 'wallet-services';
+const PORT = process.env.PROXY_PORT || '19020';
+const PATH = process.env.PROXY_PATH || '/push';
+const SCHEME = process.env.PROXY_SCHEME || 'wss';
+const TOKEN = process.env.PROXY_TOKEN || 'testnet-wss-token-do-not-use-in-production';
 const TEST_ADDRESS = process.env.TEST_ADDRESS || null;
 const TEST_ASSET_ADDRESS = process.env.TEST_ASSET_ADDRESS || null;
 const TEST_ASSET_NAME = process.env.TEST_ASSET_NAME || null;
 // Genesis the stack must serve (the reset testnet shares chain name, ports and
 // prefixes with the previous one). Unset = no chain identity check.
-const EXPECTED_GENESIS = (process.env.EXPECTED_GENESIS || "").toLowerCase() || null;
+const EXPECTED_GENESIS = (process.env.EXPECTED_GENESIS || '').toLowerCase() || null;
 const BURST_SIZE = Number(process.env.BURST_SIZE || 80);
 const BURST_LIMIT = Number(process.env.BURST_LIMIT || 50);
 
 const URL = `${SCHEME}://${HOST}:${PORT}${PATH}`;
-const SUBPROTOCOL = "wss";
-const PROTOCOL_VERSION = "wss/2";
+const SUBPROTOCOL = 'wss';
+const PROTOCOL_VERSION = 'wss/2';
 
 let passed = 0;
 let failed = 0;
@@ -36,7 +34,7 @@ function fail(name, reason) {
 
 // wss/2 amounts are canonical integer strings of raw units.
 function isRawAmount(value) {
-  return typeof value === "string" && /^(0|-?[1-9][0-9]*)$/.test(value);
+  return typeof value === 'string' && /^(0|-?[1-9][0-9]*)$/.test(value);
 }
 
 function delay(ms) {
@@ -63,12 +61,10 @@ function connect(opts) {
       clearTimeout(t);
       resolve(result);
     };
-    ws.on("open", () => finish({ ws, status: "open" }));
-    ws.on("unexpected-response", (req, res) =>
-      finish({ ws, status: res.statusCode, headers: res.headers }),
-    );
-    ws.on("error", (e) => finish({ ws, status: "error", error: e }));
-    const t = setTimeout(() => finish({ ws, status: "timeout" }), 10000);
+    ws.on('open', () => finish({ ws, status: 'open' }));
+    ws.on('unexpected-response', (req, res) => finish({ ws, status: res.statusCode, headers: res.headers }));
+    ws.on('error', (e) => finish({ ws, status: 'error', error: e }));
+    const t = setTimeout(() => finish({ ws, status: 'timeout' }), 10000);
   });
 }
 
@@ -78,19 +74,19 @@ function rpc(ws, msg) {
     const onMessage = (raw) => {
       let r;
       try {
-        r = JSON.parse(raw.toString("utf8"));
+        r = JSON.parse(raw.toString('utf8'));
       } catch {
         return;
       }
       if (r.id === id) {
-        ws.removeListener("message", onMessage);
+        ws.removeListener('message', onMessage);
         clearTimeout(t);
         resolve(r);
       }
     };
-    ws.on("message", onMessage);
+    ws.on('message', onMessage);
     const t = setTimeout(() => {
-      ws.removeListener("message", onMessage);
+      ws.removeListener('message', onMessage);
       reject(new Error(`rpc timeout for id=${id} method=${msg.method}`));
     }, 10000);
     ws.send(JSON.stringify(msg));
@@ -99,23 +95,25 @@ function rpc(ws, msg) {
 
 async function withSession(fn) {
   const res = await connect();
-  if (res.status !== "open") {
+  if (res.status !== 'open') {
     throw new Error(`could not open session: status=${res.status}`);
   }
   try {
     await rpc(res.ws, {
       id: 1,
-      method: "hello",
+      method: 'hello',
       params: {
-        client: "wss-test",
-        version: "0.1.0",
-        network: "testnet",
+        client: 'wss-test',
+        version: '0.1.0',
+        network: 'testnet',
         protocol: PROTOCOL_VERSION,
       },
     });
     return await fn(res.ws);
   } finally {
-    try { res.ws.close(); } catch {}
+    try {
+      res.ws.close();
+    } catch {}
   }
 }
 
@@ -123,34 +121,42 @@ async function waitForService() {
   const max = 60;
   for (let i = 0; i < max; i++) {
     const res = await connect();
-    if (res.status === "open") {
-      try { res.ws.close(); } catch {}
+    if (res.status === 'open') {
+      try {
+        res.ws.close();
+      } catch {}
       return;
     }
-    try { if (res.ws) res.ws.terminate(); } catch {}
+    try {
+      if (res.ws) res.ws.terminate();
+    } catch {}
     console.log(`  ... waiting for wallet-services (${i + 1}/${max}, last=${res.status})`);
     await delay(2000);
   }
-  throw new Error("wallet-services never became reachable");
+  throw new Error('wallet-services never became reachable');
 }
 
 async function test401NoAuth() {
   const res = await connect({ token: null });
   try {
-    if (res.status === 401) ok("401 with no auth subprotocol");
-    else fail("401 with no auth", `got status=${res.status}`);
+    if (res.status === 401) ok('401 with no auth subprotocol');
+    else fail('401 with no auth', `got status=${res.status}`);
   } finally {
-    try { res.ws.terminate(); } catch {}
+    try {
+      res.ws.terminate();
+    } catch {}
   }
 }
 
 async function test401WrongToken() {
-  const res = await connect({ token: "wrong-token" });
+  const res = await connect({ token: 'wrong-token' });
   try {
-    if (res.status === 401) ok("401 with wrong token");
-    else fail("401 with wrong token", `got status=${res.status}`);
+    if (res.status === 401) ok('401 with wrong token');
+    else fail('401 with wrong token', `got status=${res.status}`);
   } finally {
-    try { res.ws.terminate(); } catch {}
+    try {
+      res.ws.terminate();
+    } catch {}
   }
 }
 
@@ -160,96 +166,108 @@ async function test404Path() {
   });
   const status = await new Promise((resolve) => {
     let done = false;
-    const finish = (s) => { if (!done) { done = true; resolve(s); } };
-    ws.on("open", () => finish("open"));
-    ws.on("unexpected-response", (req, res) => finish(res.statusCode));
-    ws.on("error", () => finish("error"));
-    setTimeout(() => finish("timeout"), 5000);
+    const finish = (s) => {
+      if (!done) {
+        done = true;
+        resolve(s);
+      }
+    };
+    ws.on('open', () => finish('open'));
+    ws.on('unexpected-response', (req, res) => finish(res.statusCode));
+    ws.on('error', () => finish('error'));
+    setTimeout(() => finish('timeout'), 5000);
   });
-  try { ws.terminate(); } catch {}
-  if (status === 404) ok("404 on wrong path");
-  else fail("404 wrong path", `got ${status}`);
+  try {
+    ws.terminate();
+  } catch {}
+  if (status === 404) ok('404 on wrong path');
+  else fail('404 wrong path', `got ${status}`);
 }
 
 async function testHello() {
   const res = await connect();
-  if (res.status !== "open") return fail("hello: open", `status=${res.status}`);
+  if (res.status !== 'open') return fail('hello: open', `status=${res.status}`);
   try {
     const r = await rpc(res.ws, {
       id: 100,
-      method: "hello",
-      params: { client: "wss-test", version: "0.1.0", network: "testnet", protocol: PROTOCOL_VERSION },
+      method: 'hello',
+      params: { client: 'wss-test', version: '0.1.0', network: 'testnet', protocol: PROTOCOL_VERSION },
     });
-    if (!r.result) return fail("hello: result", JSON.stringify(r));
-    if (r.result.protocol !== PROTOCOL_VERSION)
-      return fail("hello: protocol", r.result.protocol);
-    if (typeof r.result.tip_height !== "number" && r.result.tip_height !== null)
-      return fail("hello: tip_height type", String(r.result.tip_height));
-    ok(
-      `hello returns protocol=${r.result.protocol} tip_height=${r.result.tip_height}`,
-    );
+    if (!r.result) return fail('hello: result', JSON.stringify(r));
+    if (r.result.protocol !== PROTOCOL_VERSION) return fail('hello: protocol', r.result.protocol);
+    if (typeof r.result.tip_height !== 'number' && r.result.tip_height !== null)
+      return fail('hello: tip_height type', String(r.result.tip_height));
+    ok(`hello returns protocol=${r.result.protocol} tip_height=${r.result.tip_height}`);
     if (EXPECTED_GENESIS) {
       if (r.result.genesis_hash !== EXPECTED_GENESIS)
-        return fail("hello: genesis_hash", `expected ${EXPECTED_GENESIS}, got ${r.result.genesis_hash}`);
+        return fail('hello: genesis_hash', `expected ${EXPECTED_GENESIS}, got ${r.result.genesis_hash}`);
       ok(`hello reports the expected genesis ${EXPECTED_GENESIS.slice(0, 16)}...`);
     }
   } finally {
-    try { res.ws.close(); } catch {}
+    try {
+      res.ws.close();
+    } catch {}
   }
 }
 
 async function testHelloUnsupportedProtocol() {
   const res = await connect();
-  if (res.status !== "open") return fail("hello bad: open", `status=${res.status}`);
+  if (res.status !== 'open') return fail('hello bad: open', `status=${res.status}`);
   try {
     const r = await rpc(res.ws, {
       id: 200,
-      method: "hello",
-      params: { protocol: "wss/999" },
+      method: 'hello',
+      params: { protocol: 'wss/999' },
     });
-    if (r.error && r.error.code === 1001) ok("hello rejects unsupported protocol (1001)");
-    else fail("hello unsupported protocol", JSON.stringify(r));
+    if (r.error && r.error.code === 1001) ok('hello rejects unsupported protocol (1001)');
+    else fail('hello unsupported protocol', JSON.stringify(r));
   } finally {
-    try { res.ws.terminate(); } catch {}
+    try {
+      res.ws.terminate();
+    } catch {}
   }
 }
 
 async function testHelloLegacyProtocol() {
   // wss/1 stays available for released wallets: numeric amounts, marked deprecated.
   const res = await connect();
-  if (res.status !== "open") return fail("hello wss/1: open", `status=${res.status}`);
+  if (res.status !== 'open') return fail('hello wss/1: open', `status=${res.status}`);
   try {
-    const r = await rpc(res.ws, { id: 201, method: "hello", params: { protocol: "wss/1" } });
+    const r = await rpc(res.ws, { id: 201, method: 'hello', params: { protocol: 'wss/1' } });
     const h = r.result;
-    if (h && h.protocol === "wss/1" && h.exact_amounts === false && typeof h.deprecated === "string")
-      ok("hello still accepts the deprecated wss/1 (exact_amounts=false, deprecated notice)");
-    else fail("hello legacy wss/1", JSON.stringify(r));
+    if (h && h.protocol === 'wss/1' && h.exact_amounts === false && typeof h.deprecated === 'string')
+      ok('hello still accepts the deprecated wss/1 (exact_amounts=false, deprecated notice)');
+    else fail('hello legacy wss/1', JSON.stringify(r));
   } finally {
-    try { res.ws.terminate(); } catch {}
+    try {
+      res.ws.terminate();
+    } catch {}
   }
 }
 
 async function testPing() {
   await withSession(async (ws) => {
-    const r = await rpc(ws, { id: 300, method: "ping" });
-    if (r.result === "pong") ok("ping returns pong");
-    else fail("ping", JSON.stringify(r));
+    const r = await rpc(ws, { id: 300, method: 'ping' });
+    if (r.result === 'pong') ok('ping returns pong');
+    else fail('ping', JSON.stringify(r));
   });
 }
 
 async function testHelloRequiredForSubscribe() {
   const res = await connect();
-  if (res.status !== "open") return fail("pre-hello check: open", `status=${res.status}`);
+  if (res.status !== 'open') return fail('pre-hello check: open', `status=${res.status}`);
   try {
     const r = await rpc(res.ws, {
       id: 400,
-      method: "address.subscribe",
-      params: { address: "Nxxx" },
+      method: 'address.subscribe',
+      params: { address: 'Nxxx' },
     });
-    if (r.error && r.error.code === 1003) ok("methods require hello before use");
-    else fail("pre-hello protection", JSON.stringify(r));
+    if (r.error && r.error.code === 1003) ok('methods require hello before use');
+    else fail('pre-hello protection', JSON.stringify(r));
   } finally {
-    try { res.ws.close(); } catch {}
+    try {
+      res.ws.close();
+    } catch {}
   }
 }
 
@@ -257,11 +275,11 @@ async function testInvalidAddress() {
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 500,
-      method: "address.subscribe",
-      params: { address: "this-is-not-a-valid-address" },
+      method: 'address.subscribe',
+      params: { address: 'this-is-not-a-valid-address' },
     });
-    if (r.error && r.error.code === 1003) ok("address.subscribe rejects invalid address (1003)");
-    else fail("invalid address", JSON.stringify(r));
+    if (r.error && r.error.code === 1003) ok('address.subscribe rejects invalid address (1003)');
+    else fail('invalid address', JSON.stringify(r));
   });
 }
 
@@ -269,11 +287,11 @@ async function testUnsubscribeIdempotent() {
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 600,
-      method: "address.unsubscribe",
-      params: { address: "never-subscribed" },
+      method: 'address.unsubscribe',
+      params: { address: 'never-subscribed' },
     });
-    if (r.result === true) ok("address.unsubscribe is idempotent");
-    else fail("unsubscribe idempotent", JSON.stringify(r));
+    if (r.result === true) ok('address.unsubscribe is idempotent');
+    else fail('unsubscribe idempotent', JSON.stringify(r));
   });
 }
 
@@ -281,41 +299,37 @@ async function testBroadcastGarbage() {
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 700,
-      method: "tx.broadcast",
-      params: { rawtx: "deadbeef" },
+      method: 'tx.broadcast',
+      params: { rawtx: 'deadbeef' },
     });
-    if (r.error && r.error.code === 1005) ok("tx.broadcast normalizes node error (1005)");
-    else fail("broadcast garbage", JSON.stringify(r));
+    if (r.error && r.error.code === 1005) ok('tx.broadcast normalizes node error (1005)');
+    else fail('broadcast garbage', JSON.stringify(r));
   });
 }
 
 async function testValidAddressSubscribe() {
   if (!TEST_ADDRESS) {
-    console.log("  -- TEST_ADDRESS not set, skipping happy-path address.subscribe");
+    console.log('  -- TEST_ADDRESS not set, skipping happy-path address.subscribe');
     return;
   }
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 800,
-      method: "address.subscribe",
+      method: 'address.subscribe',
       params: { address: TEST_ADDRESS },
     });
-    if (!r.result) return fail("valid address: result", JSON.stringify(r));
-    if (typeof r.result.status !== "string")
-      return fail("valid address: status type", JSON.stringify(r.result));
-    if (!r.result.balance || !isRawAmount(r.result.balance.confirmed))
-      return fail("valid address: balance", JSON.stringify(r.result));
-    ok(
-      `address.subscribe(${TEST_ADDRESS}) status=${r.result.status.slice(0, 12)}... confirmed=${r.result.balance.confirmed}`,
-    );
+    if (!r.result) return fail('valid address: result', JSON.stringify(r));
+    if (typeof r.result.status !== 'string') return fail('valid address: status type', JSON.stringify(r.result));
+    if (!r.result.balance || !isRawAmount(r.result.balance.confirmed)) return fail('valid address: balance', JSON.stringify(r.result));
+    ok(`address.subscribe(${TEST_ADDRESS}) status=${r.result.status.slice(0, 12)}... confirmed=${r.result.balance.confirmed}`);
   });
 }
 
 async function testGetStateMissingAddress() {
   await withSession(async (ws) => {
-    const r = await rpc(ws, { id: 850, method: "address.get_state", params: {} });
-    if (r.error && r.error.code === 1003) ok("address.get_state requires address (1003)");
-    else fail("get_state missing address", JSON.stringify(r));
+    const r = await rpc(ws, { id: 850, method: 'address.get_state', params: {} });
+    if (r.error && r.error.code === 1003) ok('address.get_state requires address (1003)');
+    else fail('get_state missing address', JSON.stringify(r));
   });
 }
 
@@ -323,11 +337,11 @@ async function testGetStateInvalidCursor() {
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 851,
-      method: "address.get_state",
-      params: { address: TEST_ADDRESS || "tnq1pinvalid", cursor: "not-a-cursor" },
+      method: 'address.get_state',
+      params: { address: TEST_ADDRESS || 'tnq1pinvalid', cursor: 'not-a-cursor' },
     });
-    if (r.error && r.error.code === 1003) ok("address.get_state rejects malformed cursor (1003)");
-    else fail("get_state invalid cursor", JSON.stringify(r));
+    if (r.error && r.error.code === 1003) ok('address.get_state rejects malformed cursor (1003)');
+    else fail('get_state invalid cursor', JSON.stringify(r));
   });
 }
 
@@ -335,32 +349,32 @@ async function testGetStateAssetFilterRejected() {
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 852,
-      method: "address.get_state",
-      params: { address: TEST_ADDRESS || "tnq1pinvalid", asset: "SOMEASSET" },
+      method: 'address.get_state',
+      params: { address: TEST_ADDRESS || 'tnq1pinvalid', asset: 'SOMEASSET' },
     });
-    if (r.error && r.error.code === 1003) ok("address.get_state rejects asset filter in MVP (1003)");
-    else fail("get_state asset filter", JSON.stringify(r));
+    if (r.error && r.error.code === 1003) ok('address.get_state rejects asset filter in MVP (1003)');
+    else fail('get_state asset filter', JSON.stringify(r));
   });
 }
 
 async function testGetStateUtxoLimit() {
   if (!TEST_ADDRESS) {
-    console.log("  -- TEST_ADDRESS not set, skipping utxo_limit test");
+    console.log('  -- TEST_ADDRESS not set, skipping utxo_limit test');
     return;
   }
   await withSession(async (ws) => {
     // Default (no utxo_limit): should cap at 100
     const r = await rpc(ws, {
       id: 870,
-      method: "address.get_state",
+      method: 'address.get_state',
       params: { address: TEST_ADDRESS, include_utxos: true, include_history: false, limit: 0 },
     });
-    if (!r.result) return fail("utxo_limit default: result", JSON.stringify(r));
+    if (!r.result) return fail('utxo_limit default: result', JSON.stringify(r));
     const u = r.result.utxos;
     const p = r.result.utxo_page;
-    if (!Array.isArray(u)) return fail("utxo_limit default: utxos not array", JSON.stringify(r.result));
-    if (u.length > 100) return fail("utxo_limit default exceeds 100", `got ${u.length}`);
-    if (!p || typeof p.has_more !== "boolean") return fail("utxo_page shape", JSON.stringify(p));
+    if (!Array.isArray(u)) return fail('utxo_limit default: utxos not array', JSON.stringify(r.result));
+    if (u.length > 100) return fail('utxo_limit default exceeds 100', `got ${u.length}`);
+    if (!p || typeof p.has_more !== 'boolean') return fail('utxo_page shape', JSON.stringify(p));
     ok(`utxo_limit default cap → ${u.length} utxos has_more=${p.has_more}`);
   });
 }
@@ -370,11 +384,10 @@ async function testGetStateUtxoCursor() {
   await withSession(async (ws) => {
     const r1 = await rpc(ws, {
       id: 871,
-      method: "address.get_state",
+      method: 'address.get_state',
       params: { address: TEST_ADDRESS, include_utxos: true, include_history: false, utxo_limit: 5 },
     });
-    if (!r1.result || !Array.isArray(r1.result.utxos))
-      return fail("utxo cursor: page 1", JSON.stringify(r1));
+    if (!r1.result || !Array.isArray(r1.result.utxos)) return fail('utxo cursor: page 1', JSON.stringify(r1));
     if (!r1.result.utxo_page.has_more) {
       console.log(`  -- address has <= 5 UTXOs, skipping cursor advance test`);
       return;
@@ -382,7 +395,7 @@ async function testGetStateUtxoCursor() {
 
     const r2 = await rpc(ws, {
       id: 872,
-      method: "address.get_state",
+      method: 'address.get_state',
       params: {
         address: TEST_ADDRESS,
         include_utxos: true,
@@ -391,14 +404,12 @@ async function testGetStateUtxoCursor() {
         utxo_cursor: r1.result.utxo_page.next_cursor,
       },
     });
-    if (!r2.result || !Array.isArray(r2.result.utxos))
-      return fail("utxo cursor: page 2", JSON.stringify(r2));
+    if (!r2.result || !Array.isArray(r2.result.utxos)) return fail('utxo cursor: page 2', JSON.stringify(r2));
 
     // Verify no overlap by (txid, vout)
     const p1Keys = new Set(r1.result.utxos.map((u) => `${u.txid}:${u.vout}`));
     const overlap = r2.result.utxos.filter((u) => p1Keys.has(`${u.txid}:${u.vout}`)).length;
-    if (overlap > 0)
-      return fail("utxo cursor: pages overlap", `${overlap} duplicate utxos across page 1 and page 2`);
+    if (overlap > 0) return fail('utxo cursor: pages overlap', `${overlap} duplicate utxos across page 1 and page 2`);
     ok(`utxo cursor → page2=${r2.result.utxos.length} utxos, no overlap`);
   });
 }
@@ -408,15 +419,13 @@ async function testGetStateUtxoLimitAll() {
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 873,
-      method: "address.get_state",
+      method: 'address.get_state',
       params: { address: TEST_ADDRESS, include_utxos: true, include_history: false, utxo_limit: 0 },
     });
-    if (!r.result || !Array.isArray(r.result.utxos))
-      return fail("utxo_limit=0: utxos not array", JSON.stringify(r));
+    if (!r.result || !Array.isArray(r.result.utxos)) return fail('utxo_limit=0: utxos not array', JSON.stringify(r));
     const u = r.result.utxos;
     const p = r.result.utxo_page;
-    if (p.has_more !== false || p.next_cursor !== null)
-      return fail("utxo_limit=0 should disable pagination", JSON.stringify(p));
+    if (p.has_more !== false || p.next_cursor !== null) return fail('utxo_limit=0 should disable pagination', JSON.stringify(p));
     ok(`utxo_limit=0 → all ${u.length} utxos, has_more=false`);
   });
 }
@@ -426,23 +435,23 @@ async function testGetStateInvalidUtxoCursor() {
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 874,
-      method: "address.get_state",
-      params: { address: TEST_ADDRESS, include_utxos: true, utxo_cursor: "junk" },
+      method: 'address.get_state',
+      params: { address: TEST_ADDRESS, include_utxos: true, utxo_cursor: 'junk' },
     });
-    if (r.error && r.error.code === 1003) ok("address.get_state rejects malformed utxo_cursor (1003)");
-    else fail("invalid utxo_cursor", JSON.stringify(r));
+    if (r.error && r.error.code === 1003) ok('address.get_state rejects malformed utxo_cursor (1003)');
+    else fail('invalid utxo_cursor', JSON.stringify(r));
   });
 }
 
 async function testGetStateValid() {
   if (!TEST_ADDRESS) {
-    console.log("  -- TEST_ADDRESS not set, skipping happy-path address.get_state");
+    console.log('  -- TEST_ADDRESS not set, skipping happy-path address.get_state');
     return;
   }
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 853,
-      method: "address.get_state",
+      method: 'address.get_state',
       params: {
         address: TEST_ADDRESS,
         include_history: true,
@@ -450,16 +459,14 @@ async function testGetStateValid() {
         limit: 10,
       },
     });
-    if (!r.result) return fail("get_state result", JSON.stringify(r));
+    if (!r.result) return fail('get_state result', JSON.stringify(r));
     const res = r.result;
-    if (typeof res.status !== "string") return fail("get_state status type", JSON.stringify(res));
-    if (!res.balance || !isRawAmount(res.balance.confirmed))
-      return fail("get_state balance", JSON.stringify(res));
-    if (!Array.isArray(res.history)) return fail("get_state history not array", JSON.stringify(res));
-    if (!Array.isArray(res.utxos)) return fail("get_state utxos not array", JSON.stringify(res));
-    if (!Array.isArray(res.mempool)) return fail("get_state mempool not array", JSON.stringify(res));
-    if (!res.page || typeof res.page.has_more !== "boolean")
-      return fail("get_state page shape", JSON.stringify(res.page));
+    if (typeof res.status !== 'string') return fail('get_state status type', JSON.stringify(res));
+    if (!res.balance || !isRawAmount(res.balance.confirmed)) return fail('get_state balance', JSON.stringify(res));
+    if (!Array.isArray(res.history)) return fail('get_state history not array', JSON.stringify(res));
+    if (!Array.isArray(res.utxos)) return fail('get_state utxos not array', JSON.stringify(res));
+    if (!Array.isArray(res.mempool)) return fail('get_state mempool not array', JSON.stringify(res));
+    if (!res.page || typeof res.page.has_more !== 'boolean') return fail('get_state page shape', JSON.stringify(res.page));
     ok(
       `address.get_state(${TEST_ADDRESS.slice(0, 16)}...) history=${res.history.length} utxos=${res.utxos.length} has_more=${res.page.has_more}`,
     );
@@ -468,7 +475,7 @@ async function testGetStateValid() {
     if (res.page.has_more && res.page.next_cursor) {
       const r2 = await rpc(ws, {
         id: 854,
-        method: "address.get_state",
+        method: 'address.get_state',
         params: {
           address: TEST_ADDRESS,
           include_history: true,
@@ -477,8 +484,7 @@ async function testGetStateValid() {
           cursor: res.page.next_cursor,
         },
       });
-      if (!r2.result || !Array.isArray(r2.result.history))
-        return fail("get_state page 2", JSON.stringify(r2));
+      if (!r2.result || !Array.isArray(r2.result.history)) return fail('get_state page 2', JSON.stringify(r2));
       // First page ends at next_cursor; page 2 should start there. Verify no overlap by txid.
       const firstTxids = new Set(res.history.map((h) => h.txid));
       const overlap = r2.result.history.filter((h) => firstTxids.has(h.txid)).length;
@@ -490,32 +496,31 @@ async function testGetStateValid() {
 }
 
 async function testDepinChallengeRequiresAddress() {
-  // Protocol 2: depin.challenge takes the positional depinchallenge contract
-  // (token, address, timestamp, signature, type?). The protocol 1 shape
+  // RPC 5 accepts one complete request object. The protocol 1 shape
   // {address} is refused before anything reaches the node.
   await withSession(async (ws) => {
-    const r = await rpc(ws, { id: 900, method: "depin.challenge", params: { address: "Nxxx" } });
-    if (r.error && r.error.code === 1003 && /protocol 2/.test(r.error.message))
-      ok("depin.challenge rejects the protocol 1 {address} shape (1003)");
-    else fail("depin.challenge legacy shape", JSON.stringify(r));
+    const r = await rpc(ws, { id: 900, method: 'depin.challenge', params: { address: 'Nxxx' } });
+    if (r.error && r.error.code === 1003 && /protocol 5/i.test(r.error.message))
+      ok('depin.challenge rejects the protocol 1 {address} shape (1003)');
+    else fail('depin.challenge legacy shape', JSON.stringify(r));
   });
 }
 
 async function testDepinSignedRejectsMissingSignature() {
   // The service no longer signs or relays on a client's behalf: the protocol 1
   // signed methods are gone (1004 with a pointer), and the legacy
-  // {address, signature, args} shape is refused on the protocol 2 methods.
+  // {address, signature, args} shape is refused on RPC 5 methods.
   await withSession(async (ws) => {
-    const gone = await rpc(ws, { id: 901, method: "depin.send_msg", params: [] });
-    if (gone.error && gone.error.code === 1004) ok("depin.send_msg was retired (1004)");
-    else fail("depin.send_msg retired", JSON.stringify(gone));
+    const gone = await rpc(ws, { id: 901, method: 'depin.send_msg', params: [] });
+    if (gone.error && gone.error.code === 1004) ok('depin.send_msg was retired (1004)');
+    else fail('depin.send_msg retired', JSON.stringify(gone));
     const legacy = await rpc(ws, {
       id: 902,
-      method: "depin.receive_msg",
-      params: { address: "Nxxx", signature: "sig", args: [] },
+      method: 'depin.receive_msg',
+      params: { address: 'Nxxx', signature: 'sig', args: [] },
     });
-    if (legacy.error && legacy.error.code === 1003) ok("depin.receive_msg rejects the protocol 1 signed shape (1003)");
-    else fail("depin.receive_msg legacy shape", JSON.stringify(legacy));
+    if (legacy.error && legacy.error.code === 1003) ok('depin.receive_msg rejects the protocol 1 signed shape (1003)');
+    else fail('depin.receive_msg legacy shape', JSON.stringify(legacy));
   });
 }
 
@@ -525,12 +530,12 @@ async function testDepinReadOnlyRoutes() {
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 903,
-      method: "depin.pool_stats",
-      params: [],
+      method: 'depin.msg_info',
+      params: [{ protocol: 5, request_id: require('crypto').randomBytes(32).toString('hex'), timestamp_ms: Date.now() }],
     });
-    if (r.error && r.error.code === 1005) ok("depin.pool_stats routes (RPC error normalized)");
-    else if (r.result !== undefined) ok("depin.pool_stats returned a result");
-    else fail("depin.pool_stats routing", JSON.stringify(r));
+    if (r.error && r.error.code === 1005) ok('depin.msg_info routes (RPC error normalized)');
+    else if (r.result !== undefined) ok('depin.msg_info returned a result');
+    else fail('depin.msg_info routing', JSON.stringify(r));
   });
 }
 
@@ -538,11 +543,11 @@ async function testDepinUnknownMethod() {
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 904,
-      method: "depin.totally_made_up",
+      method: 'depin.totally_made_up',
       params: {},
     });
-    if (r.error && r.error.code === 1004) ok("depin.* unknown method returns 1004");
-    else fail("depin unknown method", JSON.stringify(r));
+    if (r.error && r.error.code === 1004) ok('depin.* unknown method returns 1004');
+    else fail('depin unknown method', JSON.stringify(r));
   });
 }
 
@@ -550,58 +555,50 @@ async function testSubscribeAssetsValidation() {
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 940,
-      method: "address.subscribe",
-      params: { address: TEST_ADDRESS || "tnq1pdummy", assets: 123 },
+      method: 'address.subscribe',
+      params: { address: TEST_ADDRESS || 'tnq1pdummy', assets: 123 },
     });
-    if (r.error && r.error.code === 1003)
-      ok("address.subscribe rejects invalid `assets` type (1003)");
-    else fail("subscribe assets validation", JSON.stringify(r));
+    if (r.error && r.error.code === 1003) ok('address.subscribe rejects invalid `assets` type (1003)');
+    else fail('subscribe assets validation', JSON.stringify(r));
   });
 }
 
 async function testSubscribeAssetsTrue() {
   if (!TEST_ASSET_ADDRESS) {
-    console.log("  -- TEST_ASSET_ADDRESS not set, skipping assets=true subscribe test");
+    console.log('  -- TEST_ASSET_ADDRESS not set, skipping assets=true subscribe test');
     return;
   }
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 941,
-      method: "address.subscribe",
+      method: 'address.subscribe',
       params: { address: TEST_ASSET_ADDRESS, assets: true },
     });
-    if (!r.result) return fail("subscribe assets=true: result", JSON.stringify(r));
-    if (!r.result.assets || typeof r.result.assets !== "object")
-      return fail("subscribe assets=true: missing assets", JSON.stringify(r.result));
+    if (!r.result) return fail('subscribe assets=true: result', JSON.stringify(r));
+    if (!r.result.assets || typeof r.result.assets !== 'object')
+      return fail('subscribe assets=true: missing assets', JSON.stringify(r.result));
     const names = Object.keys(r.result.assets);
-    ok(
-      `address.subscribe(assets=true) returned ${names.length} asset(s): ${names.slice(0, 4).join(",")}${names.length > 4 ? "..." : ""}`,
-    );
+    ok(`address.subscribe(assets=true) returned ${names.length} asset(s): ${names.slice(0, 4).join(',')}${names.length > 4 ? '...' : ''}`);
   });
 }
 
 async function testSubscribeAssetsList() {
   if (!TEST_ASSET_ADDRESS || !TEST_ASSET_NAME) {
-    console.log("  -- TEST_ASSET_NAME not set, skipping assets=[name] subscribe test");
+    console.log('  -- TEST_ASSET_NAME not set, skipping assets=[name] subscribe test');
     return;
   }
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 942,
-      method: "address.subscribe",
+      method: 'address.subscribe',
       params: { address: TEST_ASSET_ADDRESS, assets: [TEST_ASSET_NAME] },
     });
-    if (!r.result || !r.result.assets)
-      return fail("subscribe assets=[name]: missing", JSON.stringify(r));
-    if (!r.result.assets[TEST_ASSET_NAME])
-      return fail("subscribe assets=[name]: filter ignored", JSON.stringify(r.result.assets));
+    if (!r.result || !r.result.assets) return fail('subscribe assets=[name]: missing', JSON.stringify(r));
+    if (!r.result.assets[TEST_ASSET_NAME]) return fail('subscribe assets=[name]: filter ignored', JSON.stringify(r.result.assets));
     const onlyName = Object.keys(r.result.assets);
-    if (onlyName.length !== 1)
-      return fail("subscribe assets=[name]: extra keys", JSON.stringify(onlyName));
+    if (onlyName.length !== 1) return fail('subscribe assets=[name]: extra keys', JSON.stringify(onlyName));
     const bal = r.result.assets[TEST_ASSET_NAME];
-    ok(
-      `address.subscribe(assets=[${TEST_ASSET_NAME}]) → confirmed=${bal.confirmed}`,
-    );
+    ok(`address.subscribe(assets=[${TEST_ASSET_NAME}]) → confirmed=${bal.confirmed}`);
   });
 }
 
@@ -610,7 +607,7 @@ async function testGetStateAssetsTrue() {
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 943,
-      method: "address.get_state",
+      method: 'address.get_state',
       params: {
         address: TEST_ASSET_ADDRESS,
         include_history: false,
@@ -618,15 +615,12 @@ async function testGetStateAssetsTrue() {
         assets: true,
       },
     });
-    if (!r.result) return fail("get_state assets=true: result", JSON.stringify(r));
-    if (!r.result.assets || typeof r.result.assets !== "object")
-      return fail("get_state assets=true: assets missing", JSON.stringify(r.result));
-    if (!Array.isArray(r.result.asset_utxos))
-      return fail("get_state assets=true: asset_utxos not array", JSON.stringify(r.result));
+    if (!r.result) return fail('get_state assets=true: result', JSON.stringify(r));
+    if (!r.result.assets || typeof r.result.assets !== 'object')
+      return fail('get_state assets=true: assets missing', JSON.stringify(r.result));
+    if (!Array.isArray(r.result.asset_utxos)) return fail('get_state assets=true: asset_utxos not array', JSON.stringify(r.result));
     const assetNames = Object.keys(r.result.assets);
-    ok(
-      `address.get_state(assets=true) assets=${assetNames.length} asset_utxos=${r.result.asset_utxos.length}`,
-    );
+    ok(`address.get_state(assets=true) assets=${assetNames.length} asset_utxos=${r.result.asset_utxos.length}`);
   });
 }
 
@@ -635,7 +629,7 @@ async function testGetStateAssetsList() {
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 944,
-      method: "address.get_state",
+      method: 'address.get_state',
       params: {
         address: TEST_ASSET_ADDRESS,
         include_history: false,
@@ -643,47 +637,30 @@ async function testGetStateAssetsList() {
         assets: [TEST_ASSET_NAME],
       },
     });
-    if (!r.result || !r.result.assets)
-      return fail("get_state assets=[name]: missing", JSON.stringify(r));
+    if (!r.result || !r.result.assets) return fail('get_state assets=[name]: missing', JSON.stringify(r));
     const otherAssets = r.result.asset_utxos.filter((u) => u.asset !== TEST_ASSET_NAME);
-    if (otherAssets.length > 0)
-      return fail(
-        "get_state assets filter leaked other assets",
-        `${otherAssets.length} stray entries`,
-      );
-    ok(
-      `address.get_state(assets=[${TEST_ASSET_NAME}]) asset_utxos=${r.result.asset_utxos.length} (filtered)`,
-    );
+    if (otherAssets.length > 0) return fail('get_state assets filter leaked other assets', `${otherAssets.length} stray entries`);
+    ok(`address.get_state(assets=[${TEST_ASSET_NAME}]) asset_utxos=${r.result.asset_utxos.length} (filtered)`);
   });
 }
 
 async function testBulkSubscribeMixed() {
   await withSession(async (ws) => {
     const valid = TEST_ADDRESS || null;
-    const addresses = [
-      valid || "tnq1pinvalid_skip",
-      "not-an-address-at-all",
-      "",
-    ];
+    const addresses = [valid || 'tnq1pinvalid_skip', 'not-an-address-at-all', ''];
     const r = await rpc(ws, {
       id: 900,
-      method: "address.subscribe.bulk",
+      method: 'address.subscribe.bulk',
       params: { addresses },
     });
-    if (!r.result || !Array.isArray(r.result.results))
-      return fail("bulk subscribe shape", JSON.stringify(r));
+    if (!r.result || !Array.isArray(r.result.results)) return fail('bulk subscribe shape', JSON.stringify(r));
     const res = r.result.results;
-    if (res.length !== addresses.length)
-      return fail("bulk subscribe count", `expected ${addresses.length}, got ${res.length}`);
-    if (!res[1].error || res[1].error.code !== 1003)
-      return fail("bulk subscribe: invalid entry should error", JSON.stringify(res[1]));
-    if (!res[2].error || res[2].error.code !== 1003)
-      return fail("bulk subscribe: empty entry should error", JSON.stringify(res[2]));
+    if (res.length !== addresses.length) return fail('bulk subscribe count', `expected ${addresses.length}, got ${res.length}`);
+    if (!res[1].error || res[1].error.code !== 1003) return fail('bulk subscribe: invalid entry should error', JSON.stringify(res[1]));
+    if (!res[2].error || res[2].error.code !== 1003) return fail('bulk subscribe: empty entry should error', JSON.stringify(res[2]));
     if (valid) {
-      if (res[0].error)
-        return fail("bulk subscribe: valid entry errored", JSON.stringify(res[0]));
-      if (typeof res[0].status !== "string")
-        return fail("bulk subscribe: valid missing status", JSON.stringify(res[0]));
+      if (res[0].error) return fail('bulk subscribe: valid entry errored', JSON.stringify(res[0]));
+      if (typeof res[0].status !== 'string') return fail('bulk subscribe: valid missing status', JSON.stringify(res[0]));
     }
     ok(`address.subscribe.bulk returns per-entry results (errors at indices 1,2)`);
   });
@@ -693,12 +670,12 @@ async function testBulkSubscribeEmpty() {
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 901,
-      method: "address.subscribe.bulk",
+      method: 'address.subscribe.bulk',
       params: { addresses: [] },
     });
     if (r.result && Array.isArray(r.result.results) && r.result.results.length === 0)
-      ok("address.subscribe.bulk with empty array returns empty results");
-    else fail("bulk subscribe empty", JSON.stringify(r));
+      ok('address.subscribe.bulk with empty array returns empty results');
+    else fail('bulk subscribe empty', JSON.stringify(r));
   });
 }
 
@@ -706,12 +683,11 @@ async function testBulkSubscribeRequiresArray() {
   await withSession(async (ws) => {
     const r = await rpc(ws, {
       id: 902,
-      method: "address.subscribe.bulk",
+      method: 'address.subscribe.bulk',
       params: {},
     });
-    if (r.error && r.error.code === 1003)
-      ok("address.subscribe.bulk requires addresses array (1003)");
-    else fail("bulk subscribe missing array", JSON.stringify(r));
+    if (r.error && r.error.code === 1003) ok('address.subscribe.bulk requires addresses array (1003)');
+    else fail('bulk subscribe missing array', JSON.stringify(r));
   });
 }
 
@@ -722,65 +698,77 @@ async function testBulkUnsubscribe() {
     if (addrs.length > 0) {
       await rpc(ws, {
         id: 910,
-        method: "address.subscribe.bulk",
+        method: 'address.subscribe.bulk',
         params: { addresses: addrs },
       });
     }
     const r = await rpc(ws, {
       id: 911,
-      method: "address.unsubscribe.bulk",
-      params: { addresses: [...addrs, "never-subscribed", ""] },
+      method: 'address.unsubscribe.bulk',
+      params: { addresses: [...addrs, 'never-subscribed', ''] },
     });
-    if (!r.result || typeof r.result.count !== "number")
-      return fail("bulk unsubscribe shape", JSON.stringify(r));
+    if (!r.result || typeof r.result.count !== 'number') return fail('bulk unsubscribe shape', JSON.stringify(r));
     // count should match the number of non-empty strings we passed
     const expected = addrs.length + 1;
-    if (r.result.count !== expected)
-      return fail("bulk unsubscribe count", `expected ${expected}, got ${r.result.count}`);
+    if (r.result.count !== expected) return fail('bulk unsubscribe count', `expected ${expected}, got ${r.result.count}`);
     ok(`address.unsubscribe.bulk processed ${r.result.count} entries`);
   });
 }
 
 async function testWsPingRoundtrip() {
   const res = await connect();
-  if (res.status !== "open") return fail("ws ping: open", `status=${res.status}`);
+  if (res.status !== 'open') return fail('ws ping: open', `status=${res.status}`);
   try {
     await rpc(res.ws, {
       id: 880,
-      method: "hello",
-      params: { protocol: PROTOCOL_VERSION, client: "wss-test" },
+      method: 'hello',
+      params: { protocol: PROTOCOL_VERSION, client: 'wss-test' },
     });
     const got = await new Promise((resolve) => {
       const t = setTimeout(() => resolve(false), 3000);
-      res.ws.once("pong", () => { clearTimeout(t); resolve(true); });
-      try { res.ws.ping("k"); } catch { clearTimeout(t); resolve(false); }
+      res.ws.once('pong', () => {
+        clearTimeout(t);
+        resolve(true);
+      });
+      try {
+        res.ws.ping('k');
+      } catch {
+        clearTimeout(t);
+        resolve(false);
+      }
     });
-    if (got) ok("WS-frame ping → server auto-pong roundtrip");
-    else fail("ws ping", "no pong from server within 3s");
+    if (got) ok('WS-frame ping → server auto-pong roundtrip');
+    else fail('ws ping', 'no pong from server within 3s');
   } finally {
-    try { res.ws.terminate(); } catch {}
+    try {
+      res.ws.terminate();
+    } catch {}
   }
 }
 
 async function testKeepaliveDoesntKillIdle() {
   const IDLE_MS = 3000;
   const res = await connect();
-  if (res.status !== "open") return fail("keepalive idle: open", `status=${res.status}`);
+  if (res.status !== 'open') return fail('keepalive idle: open', `status=${res.status}`);
   let closed = false;
-  res.ws.on("close", () => { closed = true; });
+  res.ws.on('close', () => {
+    closed = true;
+  });
   try {
     await rpc(res.ws, {
       id: 881,
-      method: "hello",
-      params: { protocol: PROTOCOL_VERSION, client: "wss-test" },
+      method: 'hello',
+      params: { protocol: PROTOCOL_VERSION, client: 'wss-test' },
     });
     await delay(IDLE_MS);
-    if (closed) return fail("keepalive idle", `connection closed during ${IDLE_MS}ms idle`);
-    const r = await rpc(res.ws, { id: 882, method: "ping" });
-    if (r.result === "pong") ok(`keepalive: alive after ${IDLE_MS}ms idle, ping still works`);
-    else fail("keepalive idle: ping after idle", JSON.stringify(r));
+    if (closed) return fail('keepalive idle', `connection closed during ${IDLE_MS}ms idle`);
+    const r = await rpc(res.ws, { id: 882, method: 'ping' });
+    if (r.result === 'pong') ok(`keepalive: alive after ${IDLE_MS}ms idle, ping still works`);
+    else fail('keepalive idle: ping after idle', JSON.stringify(r));
   } finally {
-    try { res.ws.terminate(); } catch {}
+    try {
+      res.ws.terminate();
+    } catch {}
   }
 }
 
@@ -789,20 +777,24 @@ async function testBurst() {
   const promises = [];
   for (let i = 0; i < BURST_SIZE; i++) promises.push(connect());
   const results = await Promise.all(promises);
-  const opens = results.filter((r) => r.status === "open").length;
+  const opens = results.filter((r) => r.status === 'open').length;
   const limited = results.filter((r) => r.status === 503).length;
-  results.forEach((r) => { try { if (r.ws) r.ws.terminate(); } catch {} });
+  results.forEach((r) => {
+    try {
+      if (r.ws) r.ws.terminate();
+    } catch {}
+  });
 
   if (limited > 0) {
     ok(`burst: ${limited}/${BURST_SIZE} got 503, ${opens}/${BURST_SIZE} opened (limit=${BURST_LIMIT}/s)`);
     const r503 = results.find((r) => r.status === 503);
-    if (r503 && r503.headers && r503.headers["retry-after"]) {
-      ok(`burst: Retry-After present (${r503.headers["retry-after"]}s)`);
+    if (r503 && r503.headers && r503.headers['retry-after']) {
+      ok(`burst: Retry-After present (${r503.headers['retry-after']}s)`);
     } else {
-      fail("burst Retry-After", "missing or unparsed");
+      fail('burst Retry-After', 'missing or unparsed');
     }
   } else {
-    fail("burst", `expected some 503s with burst=${BURST_SIZE} > limit=${BURST_LIMIT}; got opens=${opens}`);
+    fail('burst', `expected some 503s with burst=${BURST_SIZE} > limit=${BURST_LIMIT}; got opens=${opens}`);
   }
 }
 
@@ -817,7 +809,7 @@ async function testBurst() {
     process.exit(2);
   }
 
-  console.log("[wss-test] running tests");
+  console.log('[wss-test] running tests');
 
   await test401NoAuth();
   await test401WrongToken();
@@ -856,10 +848,10 @@ async function testBurst() {
   await testKeepaliveDoesntKillIdle();
   await testBurst();
 
-  console.log("");
+  console.log('');
   console.log(`[wss-test] ${passed} passed, ${failed} failed`);
   if (failed > 0) {
-    console.log("[wss-test] failures:");
+    console.log('[wss-test] failures:');
     for (const f of failures) console.log(`  - ${f.name}: ${f.reason}`);
   }
   process.exit(failed > 0 ? 1 : 0);

@@ -1,20 +1,20 @@
 const whitelist = [
   //== Addressindex ==
-  "getaddressbalance",
-  "getaddressdeltas",
-  "getaddressmempool",
-  "getaddresstxids",
-  "getaddressutxos",
+  'getaddressbalance',
+  'getaddressdeltas',
+  'getaddressmempool',
+  'getaddresstxids',
+  'getaddressutxos',
 
   //== Assets ==
-  "getassetdata",
+  'getassetdata',
   // "getcacheinfo",
   //"getsnapshot",
   //"issue",
   //"issueunique",
-  "listaddressesbyasset",
-  "listassetbalancesbyaddress",
-  "listassets",
+  'listaddressesbyasset',
+  'listassetbalancesbyaddress',
+  'listassets',
   //"listmyassets",
   //"purgesnapshot",
   //"reissue",
@@ -24,26 +24,26 @@ const whitelist = [
 
   //== Blockchain ==
   //"clearmempool",
-  "decodeblock",
-  "getbestblockhash",
-  "getblock",
-  "getblockchaininfo",
-  "getblockcount",
+  'decodeblock',
+  'getbestblockhash',
+  'getblock',
+  'getblockchaininfo',
+  'getblockcount',
   //"getblockdeltas", // per-block address deltas: heavy on large blocks, not needed by wallets
-  "getblockhash",
+  'getblockhash',
   // "getblockhashes", //This can kill the service if you ask for all block hashes years back
-  "getblockheader",
-  "getchaintips",
-  "getchaintxstats",
-  "getdifficulty",
-  "getmempoolancestors",
-  "getmempooldescendants",
-  "getmempoolentry",
-  "getmempoolinfo",
-  "getrawmempool",
-  "getspentinfo",
-  "gettxout",
-  "gettxoutproof",
+  'getblockheader',
+  'getchaintips',
+  'getchaintxstats',
+  'getdifficulty',
+  'getmempoolancestors',
+  'getmempooldescendants',
+  'getmempoolentry',
+  'getmempoolinfo',
+  'getrawmempool',
+  'getspentinfo',
+  'gettxout',
+  'gettxoutproof',
   // "gettxoutsetinfo", // not dangerous but slow: opt-in, see EXTRA_METHODS
   //"preciousblock",
   //"pruneblockchain",
@@ -55,7 +55,7 @@ const whitelist = [
   //"getinfo",
   //"getmemoryinfo",
   //"getrpcinfo",
-  "help",
+  'help',
   //"stop",
   //"uptime",
 
@@ -77,7 +77,7 @@ const whitelist = [
   // "getblocktemplate",
   //"getkawpowhash",
   //"getmininginfo", // opt-in, see EXTRA_METHODS
-  "getnetworkhashps",
+  'getnetworkhashps',
   //"pprpcsb",
   //"prioritisetransaction",
   //"submitblock",
@@ -89,7 +89,7 @@ const whitelist = [
   //"getaddednodeinfo",
   //"getconnectioncount", // opt-in, see EXTRA_METHODS
   //"getnettotals",       // opt-in, see EXTRA_METHODS
-  "getnetworkinfo", // reduced by rpcResults.js: no proxies, no local addresses
+  'getnetworkinfo', // reduced by rpcResults.js: no proxies, no local addresses
   //"getpeerinfo",
   //"listbanned",
   //"ping",
@@ -97,31 +97,31 @@ const whitelist = [
   //"setnetworkactive",
 
   //== Rawtransactions ==
-  "combinerawtransaction",
-  "createrawtransaction",
-  "decoderawtransaction",
-  "decodescript",
+  'combinerawtransaction',
+  'createrawtransaction',
+  'decoderawtransaction',
+  'decodescript',
   //"fundrawtransaction",
-  "getrawtransaction",
-  "sendrawtransaction",
-  "signrawtransaction",
-  "testmempoolaccept",
+  'getrawtransaction',
+  'sendrawtransaction',
+  'signrawtransaction',
+  'testmempoolaccept',
 
   //== Restricted assets ==
   // "addtagtoaddress",
-  "checkaddressrestriction",
-  "checkaddresstag",
-  "checkglobalrestriction",
+  'checkaddressrestriction',
+  'checkaddresstag',
+  'checkglobalrestriction',
   //"freezeaddress",
   //"freezerestrictedasset",
-  "getverifierstring",
+  'getverifierstring',
   //"issuequalifierasset",
   //"issuerestrictedasset",
-  "isvalidverifierstring",
-  "listaddressesfortag",
-  "listaddressrestrictions",
-  "listglobalrestrictions",
-  "listtagsforaddress",
+  'isvalidverifierstring',
+  'listaddressesfortag',
+  'listaddressrestrictions',
+  'listglobalrestrictions',
+  'listtagsforaddress',
   //"reissuerestrictedasset",
   //"removetagfromaddress",
   //"transferqualifier",
@@ -147,20 +147,20 @@ const whitelist = [
 
   //== Util ==
   //"createmultisig",
-  "estimatefee",
-  "estimatesmartfee",
+  'estimatefee',
+  'estimatesmartfee',
   //"signmessagewithprivkey", // takes a private key: clients sign locally
-  "validateaddress", // also reports AuthScript witness v1/v2/v3 fields (isauthscript, witness_version, family)
-  "verifymessage",
+  'validateaddress', // also reports AuthScript witness v1/v2/v3 fields (isauthscript, witness_version, family)
+  'verifymessage',
 
   //== Depin asset (chain queries; cached per block) ==
-  "getpubkey",
-  "checkdepinvalidity",
+  'getpubkey',
+  'checkdepinvalidity',
   //"closedepin",  // DePIN transfer state (open/close/seal): owner-only wallet writes
   //"freezedepin",
-  "depingetancestorrecipients",
-  "listdepinholders",
-  "listdepinaddresses",
+  'depingetancestorrecipients',
+  'listdepinholders',
+  'listdepinaddresses',
   //"listpqaddresses",   // lists the node wallet's PQ addresses
   //"opendepin",
   //"sealdepin",
@@ -172,14 +172,15 @@ const whitelist = [
   // replies, verifies poolsig against its pinned pool key and wraps
   // depinsubmitmsg in an ECIES envelope for that key. Nothing here needs the
   // node's wallet, and nothing derived from the pool is cached.
-  "depinchallenge",
-  "depinclearmsg",     // owner-level, challenge-authenticated
-  "depingetmsginfo",   // publishes the pool key (clients pin it on first use)
-  "depinlistsections", // 0 args: public section names; 4 args: address mode
-  "depinmcpstatus",
-  "depinpoolstats",
-  "depinreceivemsg",
-  "depinsubmitmsg",    // write, but non-custodial: {sender, encrypted} only
+  'depinchallenge',
+  'depinclearmsg', // owner-level, challenge-authenticated
+  'depingetmsginfo', // publishes the pool key (clients pin it on first use)
+  'depinlistsections', // 0 args: public section names; 4 args: address mode
+  'depinmcpstatus',
+  'depinpoolstats',
+  'depinreceivemsg',
+  'depinreceiveseq',
+  'depinsubmitmsg', // write, but non-custodial: {sender, encrypted} only
   // depingetpoolcontent no longer exists in the node.
 
   //== Depin — the node's OWN wallet; never exposed (spec §8.5) ==
@@ -262,10 +263,10 @@ const whitelist = [
   dumpprivkey or a wallet call.
 */
 const EXTRA_METHODS = [
-  "gettxoutsetinfo",    // scans the whole UTXO set (coins in circulation); cached per block
-  "getmininginfo",
-  "getconnectioncount",
-  "getnettotals",
+  'gettxoutsetinfo', // scans the whole UTXO set (coins in circulation); cached per block
+  'getmininginfo',
+  'getconnectioncount',
+  'getnettotals',
 ];
 
 function isWhitelisted(method) {

@@ -1,16 +1,18 @@
+const { assertNoDuplicateJsonKeys } = require('@neuraiproject/neurai-rpc');
+const { parse, LosslessNumber } = require('lossless-json');
 // Wire-level Sec-WebSocket-Protocol identifier. Must be a valid HTTP token
 // (RFC 7230 §3.2.6) — no "/". The application-level versioned name "wss/1"
 // is reported only inside the JSON `hello` message.
-const SUBPROTOCOL = "wss";
-const VERSION = "wss/2";
-const SUPPORTED_PROTOCOLS = ["wss/1", VERSION];
+const SUBPROTOCOL = 'wss';
+const VERSION = 'wss/2';
+const SUPPORTED_PROTOCOLS = ['wss/1', VERSION];
 // wss/1 is kept only so released wallet builds keep working, and will be
 // retired: it sends amounts as JS numbers (lossy above 2^53), has no rpc.call
 // and gets no address.sync_status. New clients must use wss/2. It is still
 // the default when hello omits `protocol`, as in 1.1.1; retiring it will make
 // wss/2 the default.
 const DEPRECATED_PROTOCOLS = {
-  "wss/1": "wss/1 is deprecated and will be retired: amounts are JS numbers (lossy above 2^53); use wss/2",
+  'wss/1': 'wss/1 is deprecated and will be retired: amounts are JS numbers (lossy above 2^53); use wss/2',
 };
 
 const ERROR_CODES = {
@@ -38,7 +40,7 @@ function makeResponse(id, result) {
 
 function makeError(id, code, message, extra) {
   const error = { code, message };
-  if (extra && typeof extra === "object") {
+  if (extra && typeof extra === 'object') {
     for (const k of Object.keys(extra)) error[k] = extra[k];
   }
   return { id: id == null ? null : id, error };
@@ -49,16 +51,26 @@ function makeEvent(method, params) {
 }
 
 function parseMessage(raw) {
-  if (typeof raw !== "string" && !Buffer.isBuffer(raw)) return null;
-  const text = Buffer.isBuffer(raw) ? raw.toString("utf8") : raw;
+  if (typeof raw !== 'string' && !Buffer.isBuffer(raw)) return null;
+  const text = Buffer.isBuffer(raw) ? raw.toString('utf8') : raw;
   let msg;
   try {
     msg = JSON.parse(text);
+    if (typeof msg?.method === 'string' && msg.method.startsWith('depin.')) {
+      assertNoDuplicateJsonKeys(text);
+      const exact = parse(text, (_key, value) => {
+        if (value && typeof value === 'object' && value.isLosslessNumber === true && !(value instanceof LosslessNumber))
+          throw new Error('Invalid numeric object');
+        return value;
+      });
+      // Preserve integer tokens, including after_seq > 2^53, as JSON numbers.
+      msg.params = exact.params;
+    }
   } catch {
     return null;
   }
-  if (typeof msg !== "object" || msg === null || Array.isArray(msg)) return null;
-  if (typeof msg.method !== "string" || msg.method.length === 0) return null;
+  if (typeof msg !== 'object' || msg === null || Array.isArray(msg)) return null;
+  if (typeof msg.method !== 'string' || msg.method.length === 0) return null;
   return {
     id: msg.id == null ? null : msg.id,
     method: msg.method,

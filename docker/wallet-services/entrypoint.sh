@@ -1,7 +1,11 @@
 #!/bin/sh
 set -eu
 
-: "${PROXY_SERVICE_ID:=neurai-wallet-service}"
+# Service settings are SERVICE_*. They were PROXY_* while this service was
+# neurai-rpc-proxy: each old name is still read when the new one is unset or
+# empty, so an existing .env or `docker run -e PROXY_…` keeps working.
+
+: "${SERVICE_ID:=${PROXY_SERVICE_ID:-neurai-wallet-service}}"
 : "${NEURAI_NODE_NAME:=neuraid-testnet}"
 : "${NEURAI_NODE_URL:=http://neuraid:19101}"
 : "${NEURAI_RPC_USER:=neurai}"
@@ -20,171 +24,172 @@ if [ -n "${NEURAI_DEPIN_ENABLED:-}${NEURAI_DEPIN_URL:-}" ]; then
 fi
 # depin* abuse control by origin IP, shared by HTTP and WSS: requests per IP
 # and minute, and how long an IP that went over is blocked (0 = no ban).
-: "${PROXY_DEPIN_RATE_LIMIT:=60}"
-: "${PROXY_DEPIN_BAN_MINUTES:=10}"
+: "${SERVICE_DEPIN_RATE_LIMIT:=${PROXY_DEPIN_RATE_LIMIT:-60}}"
+: "${SERVICE_DEPIN_BAN_MINUTES:=${PROXY_DEPIN_BAN_MINUTES:-10}}"
 # Service-wide limit on the node reads that flush its state on every call in
 # v1.0.6 (asset and restricted-asset lists, gettxoutsetinfo): a bucket of BURST
 # uncached calls refilled at PER_SECOND per second (0 disables the limit), and
 # how many may be outstanding at once.
-: "${PROXY_FLUSHING_READS_PER_SECOND:=2}"
-: "${PROXY_FLUSHING_READS_BURST:=20}"
-: "${PROXY_FLUSHING_READS_MAX_IN_FLIGHT:=4}"
-: "${PROXY_WSS_ENABLED:=false}"
-: "${PROXY_WSS_PORT:=19020}"
-: "${PROXY_WSS_PATH:=/push}"
-: "${PROXY_WSS_TLS_ENABLED:=true}"
-: "${PROXY_WSS_SSL_CERT:=/app/certs/push.crt}"
-: "${PROXY_WSS_SSL_KEY:=/app/certs/push.key}"
-: "${PROXY_WSS_AUTH_TRANSPORT:=sec-websocket-protocol}"
-: "${PROXY_WSS_AUTH_TOKEN:=change-this-token}"
-: "${PROXY_WSS_AUTOGEN_CERT:=false}"
-: "${PROXY_WSS_ZMQ_SEQUENCE_ENABLED:=false}"
-: "${PROXY_WSS_ZMQ_WATCHDOG_MS:=300000}"
-: "${PROXY_WSS_POLL_INTERVAL_MS:=5000}"
-: "${PROXY_WSS_MEMPOOL_INTERVAL_MS:=3000}"
-: "${PROXY_WSS_MAX_SESSIONS:=5000}"
-: "${PROXY_WSS_MAX_SUBSCRIPTIONS_PER_SESSION:=200}"
-: "${PROXY_WSS_MAX_NEW_CONNECTIONS_PER_SECOND:=50}"
-: "${PROXY_WSS_HISTORY_PAGE_LIMIT:=100}"
-: "${PROXY_WSS_UTXO_PAGE_LIMIT:=1000}"
-: "${PROXY_WSS_BULK_SUBSCRIBE_LIMIT:=200}"
-: "${PROXY_WSS_REORG_INVALIDATE_DEPTH:=60}"
-: "${PROXY_WSS_KEEPALIVE_INTERVAL_MS:=25000}"
-: "${PROXY_WSS_KEEPALIVE_TIMEOUT_MS:=10000}"
-: "${PROXY_WSS_STATS_ENABLED:=false}"
-: "${PROXY_WSS_STATS_PORT:=19021}"
-: "${PROXY_ZMQ_ENDPOINT:=tcp://neuraid:28332}"
-: "${PROXY_HTTP_ENABLED:=false}"
-: "${PROXY_HTTP_SERVE_WWW:=true}"
-: "${PROXY_HTTP_HEADING:=Neurai RPC}"
-: "${PROXY_HTTP_ENVIRONMENT:=Neurai}"
-: "${PROXY_HTTP_ENDPOINT:=}"
-: "${PROXY_HTTP_CONCURRENCY:=4}"
-: "${PROXY_HTTP_MAX_RPS:=100}"
-: "${PROXY_HTTP_MAX_RPS_PER_IP:=20}"
-: "${PROXY_HTTP_MAX_QUEUE_SIZE:=500}"
-: "${PROXY_HTTP_RATE_LIMITER_TTL_MS:=300000}"
-: "${PROXY_HTTP_MAX_RATE_LIMITER_IPS:=10000}"
+: "${SERVICE_FLUSHING_READS_PER_SECOND:=${PROXY_FLUSHING_READS_PER_SECOND:-2}}"
+: "${SERVICE_FLUSHING_READS_BURST:=${PROXY_FLUSHING_READS_BURST:-20}}"
+: "${SERVICE_FLUSHING_READS_MAX_IN_FLIGHT:=${PROXY_FLUSHING_READS_MAX_IN_FLIGHT:-4}}"
+: "${SERVICE_WSS_ENABLED:=${PROXY_WSS_ENABLED:-false}}"
+: "${SERVICE_WSS_PORT:=${PROXY_WSS_PORT:-19020}}"
+: "${SERVICE_WSS_PATH:=${PROXY_WSS_PATH:-/push}}"
+: "${SERVICE_WSS_TLS_ENABLED:=${PROXY_WSS_TLS_ENABLED:-true}}"
+: "${SERVICE_WSS_SSL_CERT:=${PROXY_WSS_SSL_CERT:-/app/certs/push.crt}}"
+: "${SERVICE_WSS_SSL_KEY:=${PROXY_WSS_SSL_KEY:-/app/certs/push.key}}"
+: "${SERVICE_WSS_AUTH_TRANSPORT:=${PROXY_WSS_AUTH_TRANSPORT:-sec-websocket-protocol}}"
+: "${SERVICE_WSS_AUTH_TOKEN:=${PROXY_WSS_AUTH_TOKEN:-change-this-token}}"
+: "${SERVICE_WSS_AUTOGEN_CERT:=${PROXY_WSS_AUTOGEN_CERT:-false}}"
+: "${SERVICE_WSS_ZMQ_SEQUENCE_ENABLED:=${PROXY_WSS_ZMQ_SEQUENCE_ENABLED:-false}}"
+: "${SERVICE_WSS_ZMQ_WATCHDOG_MS:=${PROXY_WSS_ZMQ_WATCHDOG_MS:-300000}}"
+: "${SERVICE_WSS_POLL_INTERVAL_MS:=${PROXY_WSS_POLL_INTERVAL_MS:-5000}}"
+: "${SERVICE_WSS_MEMPOOL_INTERVAL_MS:=${PROXY_WSS_MEMPOOL_INTERVAL_MS:-3000}}"
+: "${SERVICE_WSS_MAX_SESSIONS:=${PROXY_WSS_MAX_SESSIONS:-5000}}"
+: "${SERVICE_WSS_MAX_SUBSCRIPTIONS_PER_SESSION:=${PROXY_WSS_MAX_SUBSCRIPTIONS_PER_SESSION:-200}}"
+: "${SERVICE_WSS_MAX_NEW_CONNECTIONS_PER_SECOND:=${PROXY_WSS_MAX_NEW_CONNECTIONS_PER_SECOND:-50}}"
+: "${SERVICE_WSS_HISTORY_PAGE_LIMIT:=${PROXY_WSS_HISTORY_PAGE_LIMIT:-100}}"
+: "${SERVICE_WSS_UTXO_PAGE_LIMIT:=${PROXY_WSS_UTXO_PAGE_LIMIT:-1000}}"
+: "${SERVICE_WSS_BULK_SUBSCRIBE_LIMIT:=${PROXY_WSS_BULK_SUBSCRIBE_LIMIT:-200}}"
+: "${SERVICE_WSS_REORG_INVALIDATE_DEPTH:=${PROXY_WSS_REORG_INVALIDATE_DEPTH:-60}}"
+: "${SERVICE_WSS_KEEPALIVE_INTERVAL_MS:=${PROXY_WSS_KEEPALIVE_INTERVAL_MS:-25000}}"
+: "${SERVICE_WSS_KEEPALIVE_TIMEOUT_MS:=${PROXY_WSS_KEEPALIVE_TIMEOUT_MS:-10000}}"
+: "${SERVICE_WSS_STATS_ENABLED:=${PROXY_WSS_STATS_ENABLED:-false}}"
+: "${SERVICE_WSS_STATS_PORT:=${PROXY_WSS_STATS_PORT:-19021}}"
+: "${SERVICE_ZMQ_ENDPOINT:=${PROXY_ZMQ_ENDPOINT:-tcp://neuraid:28332}}"
+: "${SERVICE_HTTP_ENABLED:=${PROXY_HTTP_ENABLED:-false}}"
+: "${SERVICE_HTTP_SERVE_WWW:=${PROXY_HTTP_SERVE_WWW:-true}}"
+: "${SERVICE_HTTP_HEADING:=${PROXY_HTTP_HEADING:-Neurai RPC}}"
+: "${SERVICE_HTTP_ENVIRONMENT:=${PROXY_HTTP_ENVIRONMENT:-Neurai}}"
+: "${SERVICE_HTTP_ENDPOINT:=${PROXY_HTTP_ENDPOINT:-}}"
+: "${SERVICE_HTTP_CONCURRENCY:=${PROXY_HTTP_CONCURRENCY:-4}}"
+: "${SERVICE_HTTP_MAX_RPS:=${PROXY_HTTP_MAX_RPS:-100}}"
+: "${SERVICE_HTTP_MAX_RPS_PER_IP:=${PROXY_HTTP_MAX_RPS_PER_IP:-20}}"
+: "${SERVICE_HTTP_MAX_QUEUE_SIZE:=${PROXY_HTTP_MAX_QUEUE_SIZE:-500}}"
+: "${SERVICE_HTTP_RATE_LIMITER_TTL_MS:=${PROXY_HTTP_RATE_LIMITER_TTL_MS:-300000}}"
+: "${SERVICE_HTTP_MAX_RATE_LIMITER_IPS:=${PROXY_HTTP_MAX_RATE_LIMITER_IPS:-10000}}"
 # Opt-in read-only methods for every HTTP client, comma separated. Only
 # gettxoutsetinfo, getmininginfo, getconnectioncount and getnettotals are
 # accepted; anything else stops the service at start.
-: "${PROXY_HTTP_EXTRA_METHODS:=}"
+: "${SERVICE_HTTP_EXTRA_METHODS:=${PROXY_HTTP_EXTRA_METHODS:-}}"
 # Trusted HTTP clients as a JSON array (see README, "Trusted clients"), e.g.
 # [{"name":"explorer","key":"<secret>","extra_methods":["gettxoutsetinfo"]}]
-: "${PROXY_HTTP_CLIENTS:=[]}"
-# Only without WSS (PROXY_WSS_ENABLED=false): how often the HTTP-only service
+: "${SERVICE_HTTP_CLIENTS:=${PROXY_HTTP_CLIENTS:-[]}}"
+# Only without WSS (SERVICE_WSS_ENABLED=false): how often the HTTP-only service
 # checks the chain tip to clear its per-block cache.
-: "${PROXY_HTTP_TIP_POLL_INTERVAL_MS:=1000}"
-export PROXY_HTTP_EXTRA_METHODS PROXY_HTTP_CLIENTS
+: "${SERVICE_HTTP_TIP_POLL_INTERVAL_MS:=${PROXY_HTTP_TIP_POLL_INTERVAL_MS:-1000}}"
+export SERVICE_HTTP_EXTRA_METHODS SERVICE_HTTP_CLIENTS
 # Time limit for every call to the node, in milliseconds, and per-method
 # overrides as a JSON object (gettxoutsetinfo has 600000 unless overridden).
-: "${PROXY_RPC_TIMEOUT_MS:=30000}"
-if [ -z "${PROXY_RPC_METHOD_TIMEOUTS_MS:-}" ]; then PROXY_RPC_METHOD_TIMEOUTS_MS='{}'; fi
-export PROXY_RPC_METHOD_TIMEOUTS_MS
+: "${SERVICE_RPC_TIMEOUT_MS:=${PROXY_RPC_TIMEOUT_MS:-30000}}"
+if [ -z "${SERVICE_RPC_METHOD_TIMEOUTS_MS:-}" ]; then SERVICE_RPC_METHOD_TIMEOUTS_MS="${PROXY_RPC_METHOD_TIMEOUTS_MS:-}"; fi
+if [ -z "${SERVICE_RPC_METHOD_TIMEOUTS_MS}" ]; then SERVICE_RPC_METHOD_TIMEOUTS_MS='{}'; fi
+export SERVICE_RPC_METHOD_TIMEOUTS_MS
 # Reverse proxies whose X-Forwarded-For is believed, for HTTP and WSS alike.
-# PROXY_HTTP_TRUSTED_PROXIES is the former name and still honoured.
-: "${PROXY_TRUSTED_PROXIES:=${PROXY_HTTP_TRUSTED_PROXIES:-127.0.0.1,::1,::ffff:127.0.0.1}}"
+# PROXY_TRUSTED_PROXIES and the older PROXY_HTTP_TRUSTED_PROXIES are still honoured.
+: "${SERVICE_TRUSTED_PROXIES:=${PROXY_TRUSTED_PROXIES:-${PROXY_HTTP_TRUSTED_PROXIES:-127.0.0.1,::1,::ffff:127.0.0.1}}}"
 # A default assigned by `:` is a shell variable, not an exported one: node
 # would otherwise read an empty string and emit [] (no proxy trusted).
-export PROXY_TRUSTED_PROXIES
+export SERVICE_TRUSTED_PROXIES
 
-PROXY_TRUSTED_PROXY_IPS_JSON="$(node -e 'const values = (process.env.PROXY_TRUSTED_PROXIES || "").split(",").map((value) => value.trim()).filter(Boolean); process.stdout.write(JSON.stringify(values));')"
-PROXY_HTTP_EXTRA_METHODS_JSON="$(node -e 'const values = (process.env.PROXY_HTTP_EXTRA_METHODS || "").split(",").map((value) => value.trim()).filter(Boolean); process.stdout.write(JSON.stringify(values));')"
+SERVICE_TRUSTED_PROXY_IPS_JSON="$(node -e 'const values = (process.env.SERVICE_TRUSTED_PROXIES || "").split(",").map((value) => value.trim()).filter(Boolean); process.stdout.write(JSON.stringify(values));')"
+SERVICE_HTTP_EXTRA_METHODS_JSON="$(node -e 'const values = (process.env.SERVICE_HTTP_EXTRA_METHODS || "").split(",").map((value) => value.trim()).filter(Boolean); process.stdout.write(JSON.stringify(values));')"
 # The value holds client keys: report a malformed one without printing it.
-if ! PROXY_HTTP_CLIENTS_JSON="$(node -e 'const value = JSON.parse(process.env.PROXY_HTTP_CLIENTS); if (!Array.isArray(value)) process.exit(1); process.stdout.write(JSON.stringify(value));' 2>/dev/null)"; then
-  echo "[entrypoint] PROXY_HTTP_CLIENTS must be a JSON array (in .env, wrap it in single quotes)" >&2
+if ! SERVICE_HTTP_CLIENTS_JSON="$(node -e 'const value = JSON.parse(process.env.SERVICE_HTTP_CLIENTS); if (!Array.isArray(value)) process.exit(1); process.stdout.write(JSON.stringify(value));' 2>/dev/null)"; then
+  echo "[entrypoint] SERVICE_HTTP_CLIENTS must be a JSON array (in .env, wrap it in single quotes)" >&2
   exit 1
 fi
 
-if ! PROXY_RPC_METHOD_TIMEOUTS_JSON="$(node -e 'const value = JSON.parse(process.env.PROXY_RPC_METHOD_TIMEOUTS_MS); if (!value || typeof value !== "object" || Array.isArray(value)) process.exit(1); process.stdout.write(JSON.stringify(value));' 2>/dev/null)"; then
-  echo "[entrypoint] PROXY_RPC_METHOD_TIMEOUTS_MS must be a JSON object, e.g. {\"gettxoutsetinfo\":900000}" >&2
+if ! SERVICE_RPC_METHOD_TIMEOUTS_JSON="$(node -e 'const value = JSON.parse(process.env.SERVICE_RPC_METHOD_TIMEOUTS_MS); if (!value || typeof value !== "object" || Array.isArray(value)) process.exit(1); process.stdout.write(JSON.stringify(value));' 2>/dev/null)"; then
+  echo "[entrypoint] SERVICE_RPC_METHOD_TIMEOUTS_MS must be a JSON object, e.g. {\"gettxoutsetinfo\":900000}" >&2
   exit 1
 fi
 
 # The listener carries WSS, WSS + HTTP, or HTTP alone; a self-signed cert
 # is generated for whichever of them runs.
-if { [ "${PROXY_WSS_ENABLED}" = "true" ] || [ "${PROXY_HTTP_ENABLED}" = "true" ]; } \
-   && [ "${PROXY_WSS_TLS_ENABLED}" = "true" ] \
-   && [ "${PROXY_WSS_AUTOGEN_CERT}" = "true" ]; then
-  if [ ! -f "${PROXY_WSS_SSL_CERT}" ] || [ ! -f "${PROXY_WSS_SSL_KEY}" ]; then
-    mkdir -p "$(dirname "${PROXY_WSS_SSL_CERT}")" "$(dirname "${PROXY_WSS_SSL_KEY}")"
-    echo "[entrypoint] generating self-signed cert at ${PROXY_WSS_SSL_CERT} (dev/test only)"
+if { [ "${SERVICE_WSS_ENABLED}" = "true" ] || [ "${SERVICE_HTTP_ENABLED}" = "true" ]; } \
+   && [ "${SERVICE_WSS_TLS_ENABLED}" = "true" ] \
+   && [ "${SERVICE_WSS_AUTOGEN_CERT}" = "true" ]; then
+  if [ ! -f "${SERVICE_WSS_SSL_CERT}" ] || [ ! -f "${SERVICE_WSS_SSL_KEY}" ]; then
+    mkdir -p "$(dirname "${SERVICE_WSS_SSL_CERT}")" "$(dirname "${SERVICE_WSS_SSL_KEY}")"
+    echo "[entrypoint] generating self-signed cert at ${SERVICE_WSS_SSL_CERT} (dev/test only)"
     openssl req -x509 -newkey rsa:2048 \
-      -keyout "${PROXY_WSS_SSL_KEY}" \
-      -out "${PROXY_WSS_SSL_CERT}" \
+      -keyout "${SERVICE_WSS_SSL_KEY}" \
+      -out "${SERVICE_WSS_SSL_CERT}" \
       -days 365 -nodes \
       -subj "/CN=neurai-wallet-services-dev" >/dev/null 2>&1
-    chmod 600 "${PROXY_WSS_SSL_KEY}"
+    chmod 600 "${SERVICE_WSS_SSL_KEY}"
   else
-    echo "[entrypoint] cert already exists at ${PROXY_WSS_SSL_CERT}, skipping autogen"
+    echo "[entrypoint] cert already exists at ${SERVICE_WSS_SSL_CERT}, skipping autogen"
   fi
 fi
 
 cat > /app/config.json <<EOF
 {
-  "service_id": "${PROXY_SERVICE_ID}",
+  "service_id": "${SERVICE_ID}",
   "network": "${NEURAI_NETWORK}",
   "genesis_hash": "${NEURAI_EXPECTED_GENESIS}",
-  "trusted_proxy_ips": ${PROXY_TRUSTED_PROXY_IPS_JSON},
-  "rpc_timeout_ms": ${PROXY_RPC_TIMEOUT_MS},
-  "rpc_method_timeouts_ms": ${PROXY_RPC_METHOD_TIMEOUTS_JSON},
+  "trusted_proxy_ips": ${SERVICE_TRUSTED_PROXY_IPS_JSON},
+  "rpc_timeout_ms": ${SERVICE_RPC_TIMEOUT_MS},
+  "rpc_method_timeouts_ms": ${SERVICE_RPC_METHOD_TIMEOUTS_JSON},
   "depin": {
-    "rate_limit": ${PROXY_DEPIN_RATE_LIMIT},
-    "ban_minutes": ${PROXY_DEPIN_BAN_MINUTES}
+    "rate_limit": ${SERVICE_DEPIN_RATE_LIMIT},
+    "ban_minutes": ${SERVICE_DEPIN_BAN_MINUTES}
   },
   "flushing_reads": {
-    "per_second": ${PROXY_FLUSHING_READS_PER_SECOND},
-    "burst": ${PROXY_FLUSHING_READS_BURST},
-    "max_in_flight": ${PROXY_FLUSHING_READS_MAX_IN_FLIGHT}
+    "per_second": ${SERVICE_FLUSHING_READS_PER_SECOND},
+    "burst": ${SERVICE_FLUSHING_READS_BURST},
+    "max_in_flight": ${SERVICE_FLUSHING_READS_MAX_IN_FLIGHT}
   },
   "wss": {
-    "enabled": ${PROXY_WSS_ENABLED},
+    "enabled": ${SERVICE_WSS_ENABLED},
     "host": "0.0.0.0",
-    "port": ${PROXY_WSS_PORT},
-    "path": "${PROXY_WSS_PATH}",
-    "tls_enabled": ${PROXY_WSS_TLS_ENABLED},
-    "ssl_cert": "${PROXY_WSS_SSL_CERT}",
-    "ssl_key": "${PROXY_WSS_SSL_KEY}",
+    "port": ${SERVICE_WSS_PORT},
+    "path": "${SERVICE_WSS_PATH}",
+    "tls_enabled": ${SERVICE_WSS_TLS_ENABLED},
+    "ssl_cert": "${SERVICE_WSS_SSL_CERT}",
+    "ssl_key": "${SERVICE_WSS_SSL_KEY}",
     "zmq_enabled": true,
-    "zmq_sequence_enabled": ${PROXY_WSS_ZMQ_SEQUENCE_ENABLED},
-    "zmq_watchdog_ms": ${PROXY_WSS_ZMQ_WATCHDOG_MS},
-    "auth_transport": "${PROXY_WSS_AUTH_TRANSPORT}",
-    "auth_token": "${PROXY_WSS_AUTH_TOKEN}",
-    "poll_interval_ms": ${PROXY_WSS_POLL_INTERVAL_MS},
-    "mempool_interval_ms": ${PROXY_WSS_MEMPOOL_INTERVAL_MS},
-    "max_sessions": ${PROXY_WSS_MAX_SESSIONS},
-    "max_subscriptions_per_session": ${PROXY_WSS_MAX_SUBSCRIPTIONS_PER_SESSION},
-    "max_new_connections_per_second": ${PROXY_WSS_MAX_NEW_CONNECTIONS_PER_SECOND},
-    "history_page_limit": ${PROXY_WSS_HISTORY_PAGE_LIMIT},
-    "utxo_page_limit": ${PROXY_WSS_UTXO_PAGE_LIMIT},
-    "bulk_subscribe_limit": ${PROXY_WSS_BULK_SUBSCRIBE_LIMIT},
-    "reorg_invalidate_depth": ${PROXY_WSS_REORG_INVALIDATE_DEPTH},
-    "keepalive_interval_ms": ${PROXY_WSS_KEEPALIVE_INTERVAL_MS},
-    "keepalive_timeout_ms": ${PROXY_WSS_KEEPALIVE_TIMEOUT_MS},
-    "stats_enabled": ${PROXY_WSS_STATS_ENABLED},
-    "stats_port": ${PROXY_WSS_STATS_PORT},
-    "zmq_endpoint": "${PROXY_ZMQ_ENDPOINT}"
+    "zmq_sequence_enabled": ${SERVICE_WSS_ZMQ_SEQUENCE_ENABLED},
+    "zmq_watchdog_ms": ${SERVICE_WSS_ZMQ_WATCHDOG_MS},
+    "auth_transport": "${SERVICE_WSS_AUTH_TRANSPORT}",
+    "auth_token": "${SERVICE_WSS_AUTH_TOKEN}",
+    "poll_interval_ms": ${SERVICE_WSS_POLL_INTERVAL_MS},
+    "mempool_interval_ms": ${SERVICE_WSS_MEMPOOL_INTERVAL_MS},
+    "max_sessions": ${SERVICE_WSS_MAX_SESSIONS},
+    "max_subscriptions_per_session": ${SERVICE_WSS_MAX_SUBSCRIPTIONS_PER_SESSION},
+    "max_new_connections_per_second": ${SERVICE_WSS_MAX_NEW_CONNECTIONS_PER_SECOND},
+    "history_page_limit": ${SERVICE_WSS_HISTORY_PAGE_LIMIT},
+    "utxo_page_limit": ${SERVICE_WSS_UTXO_PAGE_LIMIT},
+    "bulk_subscribe_limit": ${SERVICE_WSS_BULK_SUBSCRIBE_LIMIT},
+    "reorg_invalidate_depth": ${SERVICE_WSS_REORG_INVALIDATE_DEPTH},
+    "keepalive_interval_ms": ${SERVICE_WSS_KEEPALIVE_INTERVAL_MS},
+    "keepalive_timeout_ms": ${SERVICE_WSS_KEEPALIVE_TIMEOUT_MS},
+    "stats_enabled": ${SERVICE_WSS_STATS_ENABLED},
+    "stats_port": ${SERVICE_WSS_STATS_PORT},
+    "zmq_endpoint": "${SERVICE_ZMQ_ENDPOINT}"
   },
   "http": {
-    "enabled": ${PROXY_HTTP_ENABLED},
-    "serve_www": ${PROXY_HTTP_SERVE_WWW},
-    "heading": "${PROXY_HTTP_HEADING}",
-    "environment": "${PROXY_HTTP_ENVIRONMENT}",
-    "endpoint": "${PROXY_HTTP_ENDPOINT}",
-    "concurrency": ${PROXY_HTTP_CONCURRENCY},
-    "max_requests_per_second": ${PROXY_HTTP_MAX_RPS},
-    "max_requests_per_second_per_ip": ${PROXY_HTTP_MAX_RPS_PER_IP},
-    "max_queue_size": ${PROXY_HTTP_MAX_QUEUE_SIZE},
-    "rate_limiter_ttl_ms": ${PROXY_HTTP_RATE_LIMITER_TTL_MS},
-    "max_rate_limiter_ips": ${PROXY_HTTP_MAX_RATE_LIMITER_IPS},
-    "extra_methods": ${PROXY_HTTP_EXTRA_METHODS_JSON},
-    "clients": ${PROXY_HTTP_CLIENTS_JSON},
+    "enabled": ${SERVICE_HTTP_ENABLED},
+    "serve_www": ${SERVICE_HTTP_SERVE_WWW},
+    "heading": "${SERVICE_HTTP_HEADING}",
+    "environment": "${SERVICE_HTTP_ENVIRONMENT}",
+    "endpoint": "${SERVICE_HTTP_ENDPOINT}",
+    "concurrency": ${SERVICE_HTTP_CONCURRENCY},
+    "max_requests_per_second": ${SERVICE_HTTP_MAX_RPS},
+    "max_requests_per_second_per_ip": ${SERVICE_HTTP_MAX_RPS_PER_IP},
+    "max_queue_size": ${SERVICE_HTTP_MAX_QUEUE_SIZE},
+    "rate_limiter_ttl_ms": ${SERVICE_HTTP_RATE_LIMITER_TTL_MS},
+    "max_rate_limiter_ips": ${SERVICE_HTTP_MAX_RATE_LIMITER_IPS},
+    "extra_methods": ${SERVICE_HTTP_EXTRA_METHODS_JSON},
+    "clients": ${SERVICE_HTTP_CLIENTS_JSON},
     "host": "0.0.0.0",
-    "port": ${PROXY_WSS_PORT},
-    "tls_enabled": ${PROXY_WSS_TLS_ENABLED},
-    "ssl_cert": "${PROXY_WSS_SSL_CERT}",
-    "ssl_key": "${PROXY_WSS_SSL_KEY}",
-    "tip_poll_interval_ms": ${PROXY_HTTP_TIP_POLL_INTERVAL_MS}
+    "port": ${SERVICE_WSS_PORT},
+    "tls_enabled": ${SERVICE_WSS_TLS_ENABLED},
+    "ssl_cert": "${SERVICE_WSS_SSL_CERT}",
+    "ssl_key": "${SERVICE_WSS_SSL_KEY}",
+    "tip_poll_interval_ms": ${SERVICE_HTTP_TIP_POLL_INTERVAL_MS}
   },
   "nodes": [
     {
@@ -197,5 +202,5 @@ cat > /app/config.json <<EOF
 }
 EOF
 
-echo "[entrypoint] config.json generated, starting (wss: ${PROXY_WSS_ENABLED}, http: ${PROXY_HTTP_ENABLED})"
+echo "[entrypoint] config.json generated, starting (wss: ${SERVICE_WSS_ENABLED}, http: ${SERVICE_HTTP_ENABLED})"
 exec npm start

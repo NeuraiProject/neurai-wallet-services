@@ -75,3 +75,7 @@ test('getnetworkinfo is public (reduced by rpcResults.js); slow or operator meth
     expect([method, cache.shouldCache(method)]).toEqual([method, true]);
   }
 });
+
+test.each(['getprivacypoolinfo', 'getprivacypoolupdates'])('%s is whitelisted (privacy-pool history)', method => {
+  expect(isWhitelisted(method)).toBe(true);
+});

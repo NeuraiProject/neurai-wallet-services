@@ -10,6 +10,10 @@ const METHODS = Object.freeze([
   // Pool recovery reads the confirmed state chain and independently checks
   // the spent index. No proof generation or private wallet data is relayed.
   'getbestblockhash', 'getblock', 'getspentinfo', 'getrawmempool', 'decoderawtransaction',
+  // The confirmed state thread in pages (node -spentindex -txindex): one call
+  // replaces several reads per pool operation. The wallet still checks every
+  // transaction against its pinned instance.
+  'getprivacypoolinfo', 'getprivacypoolupdates',
   'getaddressbalance', 'getaddressdeltas', 'getaddressutxos', 'getaddressmempool',
   'getrawtransaction', 'gettxout', 'estimatesmartfee', 'getassetdata',
   'listassets', 'listassetbalancesbyaddress', 'listaddressesbyasset',

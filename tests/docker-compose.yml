@@ -9,12 +9,12 @@ services:
       - test
     environment:
       # Port and token follow docker/testnet/.env (same defaults as there).
-      PROXY_HOST: wallet-services
-      PROXY_PORT: "${PROXY_WSS_PORT:-19020}"
-      PROXY_PATH: /push
+      SERVICE_HOST: wallet-services
+      SERVICE_PORT: "${SERVICE_WSS_PORT:-${PROXY_WSS_PORT:-19020}}"
+      SERVICE_PATH: /push
       # Match the wallet-services TLS setting above: "ws" when TLS_ENABLED=false, "wss" when true.
-      PROXY_SCHEME: "ws"
-      PROXY_TOKEN: "${PROXY_WSS_AUTH_TOKEN:-testnet-wss-token-do-not-use-in-production}"
+      SERVICE_SCHEME: "ws"
+      SERVICE_TOKEN: "${SERVICE_WSS_AUTH_TOKEN:-${PROXY_WSS_AUTH_TOKEN:-testnet-wss-token-do-not-use-in-production}}"
       # hello must report this genesis: the suite fails if the stack is still
       # serving the testnet from before the reset. Empty = skip the check.
       EXPECTED_GENESIS: "${TEST_EXPECTED_GENESIS-0000008b384aeffecdab182575dc4e86c9f07f90318c65088532660ed9a8a021}"

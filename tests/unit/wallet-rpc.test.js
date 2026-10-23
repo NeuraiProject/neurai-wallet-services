@@ -31,7 +31,7 @@ test('preserves node rejection without exposing upstream credentials', async () 
   await expect(handle(session, { method: 'getaddressutxos', params: [] })).rejects.toMatchObject({ message: 'Invalid address' });
 });
 
-test.each(['getbestblockhash', 'getblock', 'getspentinfo', 'getrawmempool', 'decoderawtransaction'])(
+test.each(['getbestblockhash', 'getblock', 'getspentinfo', 'getrawmempool', 'decoderawtransaction', 'getprivacypoolinfo', 'getprivacypoolupdates'])(
   'advertises and forwards pool query %s without changing its parameters', async method => {
     const params = [{ txid: 'a'.repeat(64), index: 0 }, 2];
     const result = { script: '5120', witness: ['10', 'ab'], zk_portable_tree: { active_for_next_block: true } };

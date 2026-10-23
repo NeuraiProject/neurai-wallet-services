@@ -13,12 +13,13 @@ services:
       dockerfile: Dockerfile
       args:
         BRANCH: "${NODE_BRANCH:-DePIN-Test}"
-        # Reviewed commit of NODE_BRANCH (same reset-testnet genesis): C6, plus
+        # Reviewed commit of NODE_BRANCH (same reset-testnet genesis): C6 and C7
+        # pools, the privacy-pool history RPCs (getprivacypoolinfo/updates), and
         # asset, restricted-asset and gettxoutsetinfo reads that flush at most
         # once per chain state instead of on every call.
         # Pinning it also forces Docker to rebuild instead of reusing a cached
         # clone of the branch from before the reset.
-        SOURCE_COMMIT: "${NODE_SOURCE_COMMIT:-1e325225c65a1de4905147062fed1dd25d9d61c6}"
+        SOURCE_COMMIT: "${NODE_SOURCE_COMMIT:-1bcfb92ea424e4dd2f49a882e4c44a839de54962}"
     restart: unless-stopped
 
     logging:
@@ -130,36 +131,36 @@ services:
       # DePIN protocol 2 goes through NEURAI_NODE_URL like any other RPC. The
       # service only adds a per-IP quota for depin* (shared by HTTP and WSS):
       # requests per minute, and minutes an IP that went over stays blocked.
-      PROXY_DEPIN_RATE_LIMIT: "${PROXY_DEPIN_RATE_LIMIT:-60}"
-      PROXY_DEPIN_BAN_MINUTES: "${PROXY_DEPIN_BAN_MINUTES:-10}"
+      SERVICE_DEPIN_RATE_LIMIT: "${SERVICE_DEPIN_RATE_LIMIT:-${PROXY_DEPIN_RATE_LIMIT:-60}}"
+      SERVICE_DEPIN_BAN_MINUTES: "${SERVICE_DEPIN_BAN_MINUTES:-${PROXY_DEPIN_BAN_MINUTES:-10}}"
       # Off: the limit on reads that flush the node's state is for mainnet's
       # v1.0.6. This node flushes those reads at most once per chain state.
-      PROXY_FLUSHING_READS_PER_SECOND: "${PROXY_FLUSHING_READS_PER_SECOND:-0}"
+      SERVICE_FLUSHING_READS_PER_SECOND: "${SERVICE_FLUSHING_READS_PER_SECOND:-${PROXY_FLUSHING_READS_PER_SECOND:-0}}"
       # Reverse proxies whose X-Forwarded-For is believed (HTTP and WSS). When
       # using Hestia/nginx on the host, add this Compose network's bridge
       # gateway (inspect it with `docker network inspect neurai_net_testnet`).
       # The reverse proxy must OVERWRITE the header ($remote_addr), never
       # append to it ($proxy_add_x_forwarded_for).
-      PROXY_TRUSTED_PROXIES: "${PROXY_TRUSTED_PROXIES:-127.0.0.1,::1,::ffff:127.0.0.1}"
+      SERVICE_TRUSTED_PROXIES: "${SERVICE_TRUSTED_PROXIES:-${PROXY_TRUSTED_PROXIES:-127.0.0.1,::1,::ffff:127.0.0.1}}"
       # false = the HTTP API alone, without the /push WebSocket: no auth token
       # or ZMQ needed, same port and bind (see .env).
-      PROXY_WSS_ENABLED: "${PROXY_WSS_ENABLED:-true}"
-      PROXY_WSS_PORT: "${PROXY_WSS_PORT:-19020}"
-      PROXY_WSS_PATH: "/push"
-      PROXY_WSS_AUTH_TRANSPORT: "sec-websocket-protocol"
+      SERVICE_WSS_ENABLED: "${SERVICE_WSS_ENABLED:-${PROXY_WSS_ENABLED:-true}}"
+      SERVICE_WSS_PORT: "${SERVICE_WSS_PORT:-${PROXY_WSS_PORT:-19020}}"
+      SERVICE_WSS_PATH: "/push"
+      SERVICE_WSS_AUTH_TRANSPORT: "sec-websocket-protocol"
       # Testnet-only default. Replace it in .env for any deployment reachable from the internet.
-      PROXY_WSS_AUTH_TOKEN: "${PROXY_WSS_AUTH_TOKEN:-testnet-wss-token-do-not-use-in-production}"
-      PROXY_HTTP_ENABLED: "true"
-      PROXY_HTTP_ENVIRONMENT: "Neurai Testnet"
-      PROXY_HTTP_ENDPOINT: "${PROXY_HTTP_ENDPOINT:-https://rpc-test.neurai.org/rpc}"
-      PROXY_HTTP_MAX_RPS_PER_IP: "${PROXY_HTTP_MAX_RPS_PER_IP:-20}"
+      SERVICE_WSS_AUTH_TOKEN: "${SERVICE_WSS_AUTH_TOKEN:-${PROXY_WSS_AUTH_TOKEN:-testnet-wss-token-do-not-use-in-production}}"
+      SERVICE_HTTP_ENABLED: "true"
+      SERVICE_HTTP_ENVIRONMENT: "Neurai Testnet"
+      SERVICE_HTTP_ENDPOINT: "${SERVICE_HTTP_ENDPOINT:-${PROXY_HTTP_ENDPOINT:-https://rpc-testnet.neurai.org/rpc}}"
+      SERVICE_HTTP_MAX_RPS_PER_IP: "${SERVICE_HTTP_MAX_RPS_PER_IP:-${PROXY_HTTP_MAX_RPS_PER_IP:-20}}"
       # Opt-in read-only methods for every client, and trusted clients (own
       # budget, priority, extra methods; JSON array). Both come from .env.
-      PROXY_HTTP_EXTRA_METHODS: "${PROXY_HTTP_EXTRA_METHODS:-}"
-      PROXY_HTTP_CLIENTS: "${PROXY_HTTP_CLIENTS:-[]}"
+      SERVICE_HTTP_EXTRA_METHODS: "${SERVICE_HTTP_EXTRA_METHODS:-${PROXY_HTTP_EXTRA_METHODS:-}}"
+      SERVICE_HTTP_CLIENTS: "${SERVICE_HTTP_CLIENTS:-${PROXY_HTTP_CLIENTS:-[]}}"
       # Time limit for calls to the node (ms) and per-method overrides (JSON).
-      PROXY_RPC_TIMEOUT_MS: "${PROXY_RPC_TIMEOUT_MS:-30000}"
-      PROXY_RPC_METHOD_TIMEOUTS_MS: "${PROXY_RPC_METHOD_TIMEOUTS_MS:-}"
+      SERVICE_RPC_TIMEOUT_MS: "${SERVICE_RPC_TIMEOUT_MS:-${PROXY_RPC_TIMEOUT_MS:-30000}}"
+      SERVICE_RPC_METHOD_TIMEOUTS_MS: "${SERVICE_RPC_METHOD_TIMEOUTS_MS:-${PROXY_RPC_METHOD_TIMEOUTS_MS:-}}"
       # Default deployment: behind a host reverse proxy that terminates TLS
       # (HestiaCP / nginx / Caddy / etc). The service listens on plain ws://
       # internally and the reverse proxy on the host adds TLS + LE renewal.
@@ -170,7 +171,7 @@ services:
       # then run `v-restart-web`:
       #
       #   location /push {
-      #       proxy_pass http://127.0.0.1:${PROXY_WSS_PORT}/push;   # 19020 by default
+      #       proxy_pass http://127.0.0.1:${SERVICE_WSS_PORT}/push;   # 19020 by default
       #       proxy_http_version 1.1;
       #       proxy_set_header Upgrade $http_upgrade;
       #       proxy_set_header Connection "upgrade";
@@ -182,36 +183,36 @@ services:
       #   # Public HTTP RPC (`/rpc`, UI and metadata). Do not set
       #   # Upgrade/Connection here: these are ordinary HTTP requests.
       #   location / {
-      #       proxy_pass http://127.0.0.1:${PROXY_WSS_PORT};
+      #       proxy_pass http://127.0.0.1:${SERVICE_WSS_PORT};
       #       proxy_set_header Host $host;
       #       proxy_set_header X-Forwarded-For $remote_addr;
       #       proxy_set_header X-Forwarded-Proto $scheme;
       #   }
       #
       # To run the service with its own TLS (self-signed dev cert or LE files
-      # mounted from the host), set PROXY_WSS_TLS_ENABLED=true.
-      # PROXY_WSS_AUTOGEN_CERT=true generates a self-signed cert for dev.
-      PROXY_WSS_TLS_ENABLED: "false"
-      PROXY_WSS_AUTOGEN_CERT: "false"
-      PROXY_WSS_ZMQ_SEQUENCE_ENABLED: "false"
+      # mounted from the host), set SERVICE_WSS_TLS_ENABLED=true.
+      # SERVICE_WSS_AUTOGEN_CERT=true generates a self-signed cert for dev.
+      SERVICE_WSS_TLS_ENABLED: "false"
+      SERVICE_WSS_AUTOGEN_CERT: "false"
+      SERVICE_WSS_ZMQ_SEQUENCE_ENABLED: "false"
       # From height 10 the reset testnet runs 30 s blocks and accepts reorgs
       # up to 120 blocks deep (NIP-028), twice mainnet's 60. chain.reorg
       # reports this depth and the in-memory block index keeps twice as many
       # hashes.
-      PROXY_WSS_REORG_INVALIDATE_DEPTH: "120"
+      SERVICE_WSS_REORG_INVALIDATE_DEPTH: "120"
       # Optional local stats endpoint for ops/monitoring. When enabled, exposes
       # GET http://127.0.0.1:<port>/stats with sessions/subs/tip/zmq/queue.
       # Always loopback-only (unauthenticated); never publish the port.
-      PROXY_WSS_STATS_ENABLED: "${PROXY_WSS_STATS_ENABLED:-false}"
-      PROXY_WSS_STATS_PORT: "19021"
-      PROXY_ZMQ_ENDPOINT: "tcp://neuraid:28332"
+      SERVICE_WSS_STATS_ENABLED: "${SERVICE_WSS_STATS_ENABLED:-${PROXY_WSS_STATS_ENABLED:-false}}"
+      SERVICE_WSS_STATS_PORT: "19021"
+      SERVICE_ZMQ_ENDPOINT: "tcp://neuraid:28332"
 
     ports:
-      # WSS + HTTP bound to PROXY_BIND (loopback by default). The host reverse
-      # proxy (HestiaCP nginx) reaches it via 127.0.0.1:PROXY_WSS_PORT. Never
+      # WSS + HTTP bound to SERVICE_BIND (loopback by default). The host reverse
+      # proxy (HestiaCP nginx) reaches it via 127.0.0.1:SERVICE_WSS_PORT. Never
       # publish it to the internet while TLS_ENABLED=false — anyone could forge
       # X-Forwarded-For.
-      - "${PROXY_BIND:-127.0.0.1}:${PROXY_WSS_PORT:-19020}:${PROXY_WSS_PORT:-19020}"
+      - "${SERVICE_BIND:-${PROXY_BIND:-127.0.0.1}}:${SERVICE_WSS_PORT:-${PROXY_WSS_PORT:-19020}}:${SERVICE_WSS_PORT:-${PROXY_WSS_PORT:-19020}}"
 
     networks:
       - neurai_net_testnet

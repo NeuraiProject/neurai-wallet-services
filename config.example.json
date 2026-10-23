@@ -53,7 +53,7 @@
     "serve_www": true,
     "heading": "Neurai RPC",
     "environment": "Neurai Testnet",
-    "endpoint": "https://rpc-test.neurai.org/rpc",
+    "endpoint": "https://rpc-testnet.neurai.org/rpc",
     "concurrency": 4,
     "max_requests_per_second": 100,
     "max_requests_per_second_per_ip": 20,

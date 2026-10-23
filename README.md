@@ -50,14 +50,15 @@ minutes of inactivity and are capped at 10,000 entries.
 `trusted_proxy_ips` (root of `config.json`, shared by HTTP and WSS)
 determines which immediate peers may supply `X-Forwarded-For`; do not add
 untrusted IPs. For Docker behind Hestia/nginx on the host, the peer is normally
-the Docker bridge gateway, not `127.0.0.1`. Set `PROXY_TRUSTED_PROXIES` to a
+the Docker bridge gateway, not `127.0.0.1`. Set `SERVICE_TRUSTED_PROXIES` to a
 comma-separated list including that gateway (find it with
 `docker network inspect <network-name>`), for example `172.19.0.1,127.0.0.1,::1`.
 The reverse proxy must **overwrite** the header
 (`proxy_set_header X-Forwarded-For $remote_addr;`), never append to it
 (`$proxy_add_x_forwarded_for`): the service reads the first element, and with
 an appending proxy that element is whatever the client sent. The former
-`http.trusted_proxy_ips` / `PROXY_HTTP_TRUSTED_PROXIES` are still honoured.
+`http.trusted_proxy_ips`, `PROXY_TRUSTED_PROXIES` and `PROXY_HTTP_TRUSTED_PROXIES`
+are still honoured.
 
 For intentional compatibility with the retired proxy, most error bodies are
 preserved. Node JSON-RPC errors are `500` with
@@ -113,7 +114,7 @@ an indexer — exhaust the public per-IP budget
   `max_queue_size`, and goes ahead of waiting public requests. WSS work still
   comes first in the node queue, and the `depin*` per-IP quota applies to
   everyone.
-- In Docker, put the JSON array in `PROXY_HTTP_CLIENTS` in `.env`, wrapped in
+- In Docker, put the JSON array in `SERVICE_HTTP_CLIENTS` in `.env`, wrapped in
   single quotes.
 
 ### Opt-in methods and `getnetworkinfo`
@@ -121,7 +122,7 @@ an indexer — exhaust the public per-IP budget
 `gettxoutsetinfo`, `getmininginfo`, `getconnectioncount` and `getnettotals`
 are read-only but stay out of the public whitelist: they are slow or only
 useful to operators. Open them for every client with `http.extra_methods`
-(`PROXY_HTTP_EXTRA_METHODS`, comma separated) or for one client with its
+(`SERVICE_HTTP_EXTRA_METHODS`, comma separated) or for one client with its
 `extra_methods`. Any other name stops the service at start. `gettxoutsetinfo`
 scans the whole UTXO set: it is cached per block, but while it runs it holds
 one slot of the node queue that WSS shares, so grant it to the client that
@@ -151,8 +152,8 @@ As for WSS, `tls_enabled` defaults to `true`, and then `ssl_cert` and
 `ssl_key` are required. The per-block cache is cleared from a
 `getbestblockhash` poll every `tip_poll_interval_ms` (1 s by default, at least
 500); the mempool is not polled. With WSS enabled these keys are ignored. In
-Docker, set `PROXY_WSS_ENABLED=false` in `.env`: the listener keeps
-`PROXY_WSS_PORT`, `PROXY_BIND`, `PROXY_WSS_TLS_ENABLED` and the certificate
+Docker, set `SERVICE_WSS_ENABLED=false` in `.env`: the listener keeps
+`SERVICE_WSS_PORT`, `SERVICE_BIND`, `SERVICE_WSS_TLS_ENABLED` and the certificate
 settings.
 
 ### Time limit for node calls
@@ -166,8 +167,8 @@ has a limit: `rpc_timeout_ms` at the root of `config.json` (30 s by default) and
 unless overridden). A call over the limit is an upstream failure: HTTP answers
 `502` with `upstream RPC unavailable`, WSS `1005`, and the log names the method
 (`node timeout: getblock timed out after 30000 ms`). The request may still
-finish on the node; only the caller is released. In Docker: `PROXY_RPC_TIMEOUT_MS`
-and `PROXY_RPC_METHOD_TIMEOUTS_MS` (a JSON object, in single quotes in `.env`).
+finish on the node; only the caller is released. In Docker: `SERVICE_RPC_TIMEOUT_MS`
+and `SERVICE_RPC_METHOD_TIMEOUTS_MS` (a JSON object, in single quotes in `.env`).
 
 ### Limit on reads that flush the node (mainnet)
 
@@ -208,8 +209,8 @@ reads on a node and, at the same time, how long `getblockcount` (which needs
 The testnet compose turns the limit off: its node flushes these reads at most
 once per chain state. Remove the limit once mainnet runs a node release
 with that fix (DePIN-Test `b96c49f` and `a9f7ca5` for the asset reads,
-`1e32522` for `gettxoutsetinfo`). In Docker: `PROXY_FLUSHING_READS_PER_SECOND`,
-`PROXY_FLUSHING_READS_BURST` and `PROXY_FLUSHING_READS_MAX_IN_FLIGHT`.
+`1e32522` for `gettxoutsetinfo`). In Docker: `SERVICE_FLUSHING_READS_PER_SECOND`,
+`SERVICE_FLUSHING_READS_BURST` and `SERVICE_FLUSHING_READS_MAX_IN_FLIGHT`.
 
 ## Status
 
@@ -514,8 +515,8 @@ close cleanup (`unsubscribeAll`, `destroySession`, `keepalive.stop`).
 Both values are configurable in `wss` config or via env:
 
 ```
-PROXY_WSS_KEEPALIVE_INTERVAL_MS=25000
-PROXY_WSS_KEEPALIVE_TIMEOUT_MS=10000
+SERVICE_WSS_KEEPALIVE_INTERVAL_MS=25000
+SERVICE_WSS_KEEPALIVE_TIMEOUT_MS=10000
 ```
 
 Tuning hints:
@@ -632,8 +633,8 @@ RPC queue depth. **Disabled by default.** Activate with:
 Or via env vars in Docker:
 
 ```yaml
-PROXY_WSS_STATS_ENABLED: "true"
-PROXY_WSS_STATS_PORT: "19021"
+SERVICE_WSS_STATS_ENABLED: "true"
+SERVICE_WSS_STATS_PORT: "19021"
 ```
 
 The server always binds to `127.0.0.1` regardless of any host setting — the
@@ -673,19 +674,26 @@ docker compose -f docker/testnet/docker-compose.yml -f tests/docker-compose.yml 
 ```
 
 `.env` holds what changes per deployment or is secret: RPC credentials and
-port (one value feeds both the node and the proxy's upstream URL), the node
+port (one value feeds both the node and the service's upstream URL), the node
 branch and source commit (testnet) or image tag (mainnet), the WSS auth token,
 the published port and bind interface, the public HTTP endpoint,
-`PROXY_TRUSTED_PROXIES`, the `depin*` quota, the service mode
-(`PROXY_WSS_ENABLED`), the HTTP opt-in methods and trusted clients and, on
+`SERVICE_TRUSTED_PROXIES`, the `depin*` quota, the service mode
+(`SERVICE_WSS_ENABLED`), the HTTP opt-in methods and trusted clients and, on
 testnet, the DePIN pool token and wallet. Everything structural (indexes, ZMQ
 wiring, paths, healthchecks) stays in the compose file. Every variable has the
 same default in `.env.example` and in the compose file, so a stack starts
 without a `.env`; the template is what gets updated when a variable appears.
-On mainnet the RPC credentials in `.env` configure only the proxy and must
+On mainnet the RPC credentials in `.env` configure only the service and must
 match `docker/mainnet/neurai.conf`, which the official image reads.
-The acceptance suite picks `PROXY_WSS_PORT` and `PROXY_WSS_AUTH_TOKEN` from
+The acceptance suite picks `SERVICE_WSS_PORT` and `SERVICE_WSS_AUTH_TOKEN` from
 the same testnet `.env`.
+
+The service settings were called `PROXY_*` while this was `neurai-rpc-proxy`
+(`PROXY_WSS_PORT`, `PROXY_HTTP_ENDPOINT`, …). They are now `SERVICE_*`, and
+`PROXY_SERVICE_ID` is `SERVICE_ID`. An existing `.env` keeps working: the
+compose files and the image's entrypoint read each `PROXY_*` name when its
+`SERVICE_*` name is not set (the compose files use nested defaults,
+`${SERVICE_X:-${PROXY_X:-default}}`). Rename them in `.env` when convenient.
 
 Defaults (all overridable in `.env`):
 
@@ -694,14 +702,13 @@ Defaults (all overridable in `.env`):
   is expected to terminate TLS.
 - Testnet auth token: `testnet-wss-token-do-not-use-in-production`.
   Mainnet ships with a `CHANGE-ME-mainnet-wss-token` placeholder —
-  set `PROXY_WSS_AUTH_TOKEN` in `.env` before any internet-facing run.
+  set `SERVICE_WSS_AUTH_TOKEN` in `.env` before any internet-facing run.
 - Testnet builds the node's `DePIN-Test` branch at `NODE_SOURCE_COMMIT`
-  (default `1e325225c65a1de4905147062fed1dd25d9d61c6`, the older C6-capable
-  node with the database read fixes). This default predates RPC 5: set
-  `NODE_SOURCE_COMMIT` to a compatible node revision before using the updated
-  messaging service. `NEURAI_DEPIN_ENABLED=1` and `NEURAI_DEPIN_TOKEN` configure
+  (default `1bcfb92ea424e4dd2f49a882e4c44a839de54962`: DePIN RPC 5, the C6 and
+  C7 pools, the privacy-pool history RPCs `getprivacypoolinfo` and
+  `getprivacypoolupdates`, and the database read fixes). `NEURAI_DEPIN_ENABLED=1` and `NEURAI_DEPIN_TOKEN` configure
   that node; they do not upgrade its protocol. The service relays `depin*`
-  through RPC with `PROXY_DEPIN_RATE_LIMIT=60` / `PROXY_DEPIN_BAN_MINUTES=10`.
+  through RPC with `SERVICE_DEPIN_RATE_LIMIT=60` / `SERVICE_DEPIN_BAN_MINUTES=10`.
   Mainnet runs the official `v1.0.6` image, which has no RPC 5.
 - ZMQ subscriber connects to `tcp://neuraid:28332` automatically inside
   the Docker network. The `zeromq` npm package is in `optionalDependencies`;
@@ -712,7 +719,7 @@ Defaults (all overridable in `.env`):
   `NEURAI_EXPECTED_GENESIS` in the compose file become the root `network` and
   `genesis_hash` of the generated `config.json`. A node with another genesis
   is never used; `GET /getCache` lists it with `healthError: "unexpected
-  genesis …"`. Testnet also sets `PROXY_WSS_REORG_INVALIDATE_DEPTH=120` (see
+  genesis …"`. Testnet also sets `SERVICE_WSS_REORG_INVALIDATE_DEPTH=120` (see
   [1.2.0](#120-reset-testnet)).
 - The node image records its source: `docker image inspect` shows the
   `org.opencontainers.image.revision` label, and
@@ -769,16 +776,16 @@ get in the way of persistent mobile-wallet connections.
 Set in the proxy service environment:
 
 ```
-PROXY_WSS_TLS_ENABLED=true
-PROXY_WSS_SSL_CERT=/path/to/fullchain.pem
-PROXY_WSS_SSL_KEY=/path/to/privkey.pem
+SERVICE_WSS_TLS_ENABLED=true
+SERVICE_WSS_SSL_CERT=/path/to/fullchain.pem
+SERVICE_WSS_SSL_KEY=/path/to/privkey.pem
 ```
 
 The proxy watches both files and hot-reloads via `setSecureContext` when
 they change (e.g. when a renewal writes new files), so external renewal
 tools work without restarting the container.
 
-For local dev only, `PROXY_WSS_AUTOGEN_CERT=true` generates a
+For local dev only, `SERVICE_WSS_AUTOGEN_CERT=true` generates a
 self-signed cert in-container at startup.
 
 ## Project layout
@@ -884,7 +891,7 @@ or exact strings according to the RPC parser, **not uniformly string sats**.
 bypasses the block cache because mempool spends change its result.
 
 Configure root `service_id` as a stable identifier shared by WSS/HTTP and all
-replicas of this logical service. Docker accepts `PROXY_SERVICE_ID` (default
+replicas of this logical service. Docker accepts `SERVICE_ID` (default
 `neurai-wallet-service`; set a distinct value for each deployment). Optional
 root `network` (`mainnet`, `testnet`, `regtest`) and `genesis_hash` pin the node
 pool. Nodes with a different validated chain cannot be selected for failover;
@@ -1014,7 +1021,12 @@ commit.
 
 HTTP `/rpc` and WSS `rpc.call` expose the pool's read, scan and preflight
 queries. WSS now advertises `getbestblockhash`, `getblock`, `getspentinfo`,
-`getrawmempool` and `decoderawtransaction` in `hello.wallet_rpc.methods`.
+`getrawmempool`, `decoderawtransaction`, `getprivacypoolinfo` and
+`getprivacypoolupdates` in `hello.wallet_rpc.methods`. The last two read a
+pool's confirmed state thread in pages (the node needs `-spentindex` and
+`-txindex`); `neurai-privacy` 0.3.1 uses `getprivacypoolupdates` to scan a pool
+in a few calls instead of several per pool operation, and falls back to
+`getspentinfo` when a service does not advertise it. They are not cached.
 The service relays native schemas, scripts, witnesses and exact amounts;
 it never decrypts private notes or builds proofs. `address.get_state` reports
 transparent address data, not a user's private balance.
@@ -1055,14 +1067,14 @@ Everything the retired `neurai-rpc-proxy` offered is now here, so the services
 still pointed at it can move:
 
 - [HTTP without WSS](#http-without-wss): `wss.enabled: false` serves the HTTP
-  API alone (`PROXY_WSS_ENABLED=false` in Docker), with no auth token or ZMQ.
+  API alone (`SERVICE_WSS_ENABLED=false` in Docker), with no auth token or ZMQ.
 - [Trusted HTTP clients](#trusted-http-clients): a key (Basic auth password
   or Bearer token) or an address range gives a backend its own budget,
   priority over public requests and optional extra methods
-  (`PROXY_HTTP_CLIENTS`).
+  (`SERVICE_HTTP_CLIENTS`).
 - [Opt-in methods](#opt-in-methods-and-getnetworkinfo): `gettxoutsetinfo`,
   `getmininginfo`, `getconnectioncount` and `getnettotals`, for everyone
-  (`PROXY_HTTP_EXTRA_METHODS`) or per client. Unknown names stop the start.
+  (`SERVICE_HTTP_EXTRA_METHODS`) or per client. Unknown names stop the start.
 - `getnetworkinfo` is exposed over HTTP and WSS `rpc.call`, without
   `networks` and `localaddresses`. The web wallet reads its `relayfee`.
 - [Time limit for node calls](#time-limit-for-node-calls): 30 s by default,
@@ -1086,7 +1098,9 @@ Moving a client from the proxy:
   serve the hosts that used to point at separate DePIN proxies.
 
 Deploying this version: the Compose service is now `wallet-services` (it was
-`rpc-proxy`) and its image is built from `docker/wallet-services/`. The first
+`rpc-proxy`), its settings are `SERVICE_*` (it read `PROXY_*`; the old names
+still work, see [Running locally (docker)](#running-locally-docker)) and its image is built from
+`docker/wallet-services/`. The first
 `up` after updating must remove the old container, which still holds the
 published port:
 

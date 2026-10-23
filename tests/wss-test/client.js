@@ -1,10 +1,10 @@
 const WebSocket = require('ws');
 
-const HOST = process.env.PROXY_HOST || 'wallet-services';
-const PORT = process.env.PROXY_PORT || '19020';
-const PATH = process.env.PROXY_PATH || '/push';
-const SCHEME = process.env.PROXY_SCHEME || 'wss';
-const TOKEN = process.env.PROXY_TOKEN || 'testnet-wss-token-do-not-use-in-production';
+const HOST = process.env.SERVICE_HOST || 'wallet-services';
+const PORT = process.env.SERVICE_PORT || '19020';
+const PATH = process.env.SERVICE_PATH || '/push';
+const SCHEME = process.env.SERVICE_SCHEME || 'wss';
+const TOKEN = process.env.SERVICE_TOKEN || 'testnet-wss-token-do-not-use-in-production';
 const TEST_ADDRESS = process.env.TEST_ADDRESS || null;
 const TEST_ASSET_ADDRESS = process.env.TEST_ASSET_ADDRESS || null;
 const TEST_ASSET_NAME = process.env.TEST_ASSET_NAME || null;

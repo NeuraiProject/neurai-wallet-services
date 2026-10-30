@@ -539,6 +539,31 @@ async function testDepinReadOnlyRoutes() {
   });
 }
 
+// The node behind the stack must run -silentpaymentindex and
+// -channelmessageindex (docker/node/entrypoint.sh): without them both calls
+// reach the node and fail instead of answering.
+async function testLightClientIndexes() {
+  await withSession(async (ws) => {
+    const info = await rpc(ws, {
+      id: 905,
+      method: 'rpc.call',
+      params: { method: 'getsilentpaymentindexinfo', params: [] },
+    });
+    if (info.result && info.result.enabled === true)
+      ok(`silent payment index enabled (state=${info.result.state}, synced_height=${info.result.synced_height})`);
+    else fail('getsilentpaymentindexinfo', JSON.stringify(info));
+
+    const channel = await rpc(ws, {
+      id: 906,
+      method: 'rpc.call',
+      params: { method: 'getchannelmessages', params: ['WSSTEST!'] },
+    });
+    if (channel.result && Array.isArray(channel.result.messages))
+      ok(`channel message index answers (synced_height=${channel.result.synced_height})`);
+    else fail('getchannelmessages', JSON.stringify(channel));
+  });
+}
+
 async function testDepinUnknownMethod() {
   await withSession(async (ws) => {
     const r = await rpc(ws, {
@@ -829,6 +854,7 @@ async function testBurst() {
   await testDepinSignedRejectsMissingSignature();
   await testDepinReadOnlyRoutes();
   await testDepinUnknownMethod();
+  await testLightClientIndexes();
   await testValidAddressSubscribe();
   await testGetStateValid();
   await testSubscribeAssetsValidation();

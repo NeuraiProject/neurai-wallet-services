@@ -14,12 +14,15 @@ services:
       args:
         BRANCH: "${NODE_BRANCH:-DePIN-Test}"
         # Reviewed commit of NODE_BRANCH (same reset-testnet genesis): C6 and C7
-        # pools, the privacy-pool history RPCs (getprivacypoolinfo/updates), and
+        # pools, the privacy-pool history RPCs (getprivacypoolinfo/updates),
         # asset, restricted-asset and gettxoutsetinfo reads that flush at most
-        # once per chain state instead of on every call.
+        # once per chain state instead of on every call, the NIP-047 silent
+        # payment and NIP-048 channel message indexes, and the no-RBF sequence
+        # rule (retroactive on this testnet). The help of this commit is the one
+        # @neuraiproject/neurai-rpc 0.9.0 documents.
         # Pinning it also forces Docker to rebuild instead of reusing a cached
         # clone of the branch from before the reset.
-        SOURCE_COMMIT: "${NODE_SOURCE_COMMIT:-1bcfb92ea424e4dd2f49a882e4c44a839de54962}"
+        SOURCE_COMMIT: "${NODE_SOURCE_COMMIT:-c665ba3106a9fa76436a3dadca002619eda5d3ea}"
     restart: unless-stopped
 
     logging:
@@ -74,6 +77,10 @@ services:
       NEURAI_TIMESTAMPINDEX: "1"
       NEURAI_SPENTINDEX: "1"
       NEURAI_PUBKEYINDEX: "1"
+      # Served to wallets: getsilentpaymenttweaks* (NIP-047) and
+      # getchannelmessages (NIP-048). Set in .env; on unless overridden.
+      NEURAI_SILENTPAYMENTINDEX: "${NEURAI_SILENTPAYMENTINDEX:-1}"
+      NEURAI_CHANNELMESSAGEINDEX: "${NEURAI_CHANNELMESSAGEINDEX:-1}"
 
       # -- ZMQ ----------------------------------------------------------------
       # Internal Docker endpoint used by wallet-services as tcp://neuraid:28332

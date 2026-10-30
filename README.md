@@ -679,7 +679,8 @@ branch and source commit (testnet) or image tag (mainnet), the WSS auth token,
 the published port and bind interface, the public HTTP endpoint,
 `SERVICE_TRUSTED_PROXIES`, the `depin*` quota, the service mode
 (`SERVICE_WSS_ENABLED`), the HTTP opt-in methods and trusted clients and, on
-testnet, the DePIN pool token and wallet. Everything structural (indexes, ZMQ
+testnet, the DePIN pool token and wallet and the node's silent payment and
+channel message indexes. Everything else structural (the other indexes, ZMQ
 wiring, paths, healthchecks) stays in the compose file. Every variable has the
 same default in `.env.example` and in the compose file, so a stack starts
 without a `.env`; the template is what gets updated when a variable appears.
@@ -704,9 +705,11 @@ Defaults (all overridable in `.env`):
   Mainnet ships with a `CHANGE-ME-mainnet-wss-token` placeholder —
   set `SERVICE_WSS_AUTH_TOKEN` in `.env` before any internet-facing run.
 - Testnet builds the node's `DePIN-Test` branch at `NODE_SOURCE_COMMIT`
-  (default `1bcfb92ea424e4dd2f49a882e4c44a839de54962`: DePIN RPC 5, the C6 and
+  (default `c665ba3106a9fa76436a3dadca002619eda5d3ea`: DePIN RPC 5, the C6 and
   C7 pools, the privacy-pool history RPCs `getprivacypoolinfo` and
-  `getprivacypoolupdates`, and the database read fixes). `NEURAI_DEPIN_ENABLED=1` and `NEURAI_DEPIN_TOKEN` configure
+  `getprivacypoolupdates`, the database read fixes, the silent payment and
+  channel message indexes, which the compose turns on, and the no-RBF
+  sequence rule). `NEURAI_DEPIN_ENABLED=1` and `NEURAI_DEPIN_TOKEN` configure
   that node; they do not upgrade its protocol. The service relays `depin*`
   through RPC with `SERVICE_DEPIN_RATE_LIMIT=60` / `SERVICE_DEPIN_BAN_MINUTES=10`.
   Mainnet runs the official `v1.0.6` image, which has no RPC 5.
@@ -1061,7 +1064,7 @@ failover node has the required validation rules, history and indexes.
 Same genesis alone does not prove pool capability. This does not activate
 privacy profiles on mainnet or change either network's ports.
 
-## Unreleased: HTTP API without neurai-rpc-proxy
+## 2.0.0: HTTP API without neurai-rpc-proxy
 
 Everything the retired `neurai-rpc-proxy` offered is now here, so the services
 still pointed at it can move:
@@ -1111,6 +1114,60 @@ docker compose -f docker/testnet/docker-compose.yml up -d --build --remove-orpha
 Use `docker compose exec wallet-services …` from now on. The host reverse
 proxy needs no change: it points at the published port, not at the container.
 
+## 2.1.0: neurai-rpc 0.9.0, silent payments and channel messages
+
+`@neuraiproject/neurai-rpc` **0.9.0** documents the `help` of Neurai
+`DePIN-Test` commit `c665ba3`. Its client is the same as in 0.8.0; the
+method catalog changed, and the service follows it:
+
+- **NIP-047 silent payments for light clients.** `getsilentpaymentindexinfo`,
+  `getsilentpaymenttweaks` and `getsilentpaymenttweaksrange` are public over
+  HTTP `/rpc` and listed in `hello.wallet_rpc.methods`. They return each
+  block's public tweaks and native v3 outputs; the wallet applies its own scan
+  key, so neither the node nor the service learns which payments are its own.
+  `@neuraiproject/neurai-silent-payments` scans with
+  `getsilentpaymenttweaksrange` and can audit a record against `getblock
+  <hash> 3` (each input's prevout, from undo data; newly documented in 0.9.0).
+  The node bounds a range page to 1000 blocks and 4 MB. HTTP caches one
+  block's record per block; the range and the index info stay live.
+- **NIP-048 channel messages.** `getchannelmessages` is public over HTTP and
+  WSS: the messages an owner token (`NAME!`) or channel token (`NAME~CHANNEL`)
+  published, from a chain-wide index rather than the node wallet. The node
+  pages it (`limit`, 1000 by default and 10000 at most); HTTP caches it per
+  block.
+- Both indexes must be on in the node: `silentpaymentindex=1` and
+  `channelmessageindex=1`. On testnet they come from
+  `NEURAI_SILENTPAYMENTINDEX` and `NEURAI_CHANNELMESSAGEINDEX` in `.env`
+  (`1` in `.env.example` and in the compose default), and the node builds
+  them from block data when it starts. No `-reindex` is
+  needed. The mainnet node (official `v1.0.6` image) has neither RPC, so it
+  answers these four methods with a node error. Clients should check
+  `getsilentpaymentindexinfo.enabled` before scanning.
+- The NIP-048 reward RPCs (`getdistributionplan`, `getdistributionbatches`,
+  `getdistributionproof`, `verifydistribution`, `getsnapshotannouncement`,
+  `getsnapshotrecipients`, `replaysnapshot`, `createdistributionbatch`) and
+  the silent-payment wallet calls (`sendsilentpayments`,
+  `getsilentpaymentcode`, `exportsilentpaymentviewkey`, …) are listed in the
+  whitelist as not exposed. They are operator tooling or need the node wallet.
+- RBF is gone from the node. `bumpfee` no longer exists, and on the reset
+  testnet every input must use sequence `0xffffffff`, `0xfffffffe` or, in a
+  version 2 or 3 transaction, a BIP 68 relative lock. Anything else is
+  rejected as `bad-txns-rbf-sequence`, which `tx.broadcast` and
+  `sendrawtransaction` relay as a node error. The service builds no
+  transactions, so nothing changes in it.
+- Other result fields new in this catalog are relayed as the node returns
+  them: `asset_marker`, `zk_public_tree` and `asset_services` in
+  `getblockchaininfo`, `transfer_state` in `getassetdata`, `valid` in
+  `listdepinaddresses` and `poseidonwork` in the mempool entries.
+
+**Deploying.** Update `NODE_SOURCE_COMMIT` in an existing `docker/testnet/.env`
+to `c665ba3106a9fa76436a3dadca002619eda5d3ea` (the template value; an old
+`.env` overrides the compose default) and rebuild. The first start after the
+upgrade takes longer while the node builds both indexes. Then check
+`/usr/local/share/neurai/source-commit` on the node, as in
+[1.2.0](#120-reset-testnet), and run the acceptance suite: it now fails when
+either index is missing.
+
 ## Published RPC 5 dependency
 
-This checkout uses the published `@neuraiproject/neurai-rpc@0.8.0`. Run `npm ci` before starting or testing; `package-lock.json` pins the registry tarball and its SHA-512 integrity. Docker installs the same dependency from the lockfile. No local package archives are required.
+This checkout uses the published `@neuraiproject/neurai-rpc@0.9.0`. Run `npm ci` before starting or testing; `package-lock.json` pins the registry tarball and its SHA-512 integrity. Docker installs the same dependency from the lockfile. No local package archives are required.

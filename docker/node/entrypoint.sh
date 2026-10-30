@@ -29,6 +29,9 @@ addressindex=${NEURAI_ADDRESSINDEX:-1}
 timestampindex=${NEURAI_TIMESTAMPINDEX:-1}
 spentindex=${NEURAI_SPENTINDEX:-1}
 pubkeyindex=${NEURAI_PUBKEYINDEX:-1}
+# Built from block data at startup when switched on; no -reindex needed.
+silentpaymentindex=${NEURAI_SILENTPAYMENTINDEX:-1}
+channelmessageindex=${NEURAI_CHANNELMESSAGEINDEX:-1}
 
 EOF
 

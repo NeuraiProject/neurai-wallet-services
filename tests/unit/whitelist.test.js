@@ -79,3 +79,39 @@ test('getnetworkinfo is public (reduced by rpcResults.js); slow or operator meth
 test.each(['getprivacypoolinfo', 'getprivacypoolupdates'])('%s is whitelisted (privacy-pool history)', method => {
   expect(isWhitelisted(method)).toBe(true);
 });
+
+// neurai-rpc 0.9.0 / node c665ba3: light-client indexes are public, while the
+// NIP-048 reward tooling and the silent-payment wallet calls stay out.
+test.each(['getsilentpaymentindexinfo', 'getsilentpaymenttweaks', 'getsilentpaymenttweaksrange', 'getchannelmessages'])(
+  '%s is whitelisted (light-client index)', method => {
+    expect(isWhitelisted(method)).toBe(true);
+  },
+);
+
+test.each([
+  ['bumpfee', 'removed from the node with RBF'],
+  ['createdistributionbatch', 'funds and signs from the node wallet'],
+  ['getdistributionplan', 'reward plan tooling'],
+  ['getdistributionbatches', 'reward plan tooling'],
+  ['getdistributionproof', 'reward plan tooling'],
+  ['verifydistribution', 'reward plan tooling'],
+  ['getsnapshotannouncement', 'reward plan tooling'],
+  ['getsnapshotrecipients', 'reward plan tooling'],
+  ['replaysnapshot', 'reads every block since asset activation'],
+  ['sendsilentpayments', 'spends from the node wallet'],
+  ['getsilentpaymentcode', "the node wallet's payment code"],
+  ['exportsilentpaymentviewkey', "the node wallet's scan key"],
+  ['importsilentpaymentviewkey', 'node wallet write'],
+  ['listsilentpayments', "the node wallet's payments"],
+  ['rescansilentpayments', 'node wallet rescan'],
+])('%s is NOT whitelisted (%s)', (method) => {
+  expect(isWhitelisted(method)).toBe(false);
+});
+
+test('one block of silent-payment data and channel messages are cached; range and index state stay live', () => {
+  const cache = cacheServiceMod.create();
+  expect(cache.shouldCache('getsilentpaymenttweaks')).toBe(true);
+  expect(cache.shouldCache('getchannelmessages')).toBe(true);
+  expect(cache.shouldCache('getsilentpaymenttweaksrange')).toBe(false);
+  expect(cache.shouldCache('getsilentpaymentindexinfo')).toBe(false);
+});

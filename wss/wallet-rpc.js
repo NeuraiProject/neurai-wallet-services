@@ -14,6 +14,12 @@ const METHODS = Object.freeze([
   // replaces several reads per pool operation. The wallet still checks every
   // transaction against its pinned instance.
   'getprivacypoolinfo', 'getprivacypoolupdates',
+  // NIP-047 light-client scanning (node -silentpaymentindex): public tweaks
+  // only; the wallet applies its scan key locally. getblock verbosity 3 lets it
+  // recompute a record to audit the service.
+  'getsilentpaymentindexinfo', 'getsilentpaymenttweaks', 'getsilentpaymenttweaksrange',
+  // NIP-048 asset channel messages from the chain-wide index (node -channelmessageindex).
+  'getchannelmessages',
   'getaddressbalance', 'getaddressdeltas', 'getaddressutxos', 'getaddressmempool',
   'getrawtransaction', 'gettxout', 'estimatesmartfee', 'getassetdata',
   'listassets', 'listassetbalancesbyaddress', 'listaddressesbyasset',

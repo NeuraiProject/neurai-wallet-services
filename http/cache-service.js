@@ -18,6 +18,10 @@ function create() {
     // (depingetancestorrecipients included — its recipients are chain data,
     // but the reply carries that poolsig).
     "checkdepinvalidity", "listdepinholders", "listdepinaddresses",
+    // One block's silent-payment record never changes; the range and the index
+    // info follow the tip and stay live. Channel messages are chain data, and
+    // their default expiry reference is the tip's median time past.
+    "getsilentpaymenttweaks", "getchannelmessages",
   ]);
   // getspentinfo reads the mempool before the disk index. Like gettxout,
   // it must stay live even when no new block has arrived.

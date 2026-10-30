@@ -42,6 +42,26 @@ test.each(['getbestblockhash', 'getblock', 'getspentinfo', 'getrawmempool', 'dec
   },
 );
 
+test.each([
+  ['getsilentpaymentindexinfo', []],
+  ['getsilentpaymenttweaks', ['a'.repeat(64), 'hex']],
+  ['getsilentpaymenttweaksrange', [1000, 500, 'b'.repeat(64)]],
+  ['getchannelmessages', ['ASSET~NEWS', { from_height: 1000, include_expired: true }]],
+])('advertises and forwards light-client index read %s unchanged', async (method, params) => {
+  const result = { format: 1, next_height: 1500, status: 'more', blocks: [{ entries: [{ outputs: [{ value_sat: '10000000000000001' }] }] }] };
+  callRPC.mockResolvedValue(result);
+  expect(capability.methods).toContain(method);
+  expect(await handle(session, { method, params })).toBe(result);
+  expect(callRPC).toHaveBeenCalledWith(method, params);
+});
+
+test.each(['sendsilentpayments', 'exportsilentpaymentviewkey', 'createdistributionbatch', 'replaysnapshot'])(
+  'does not expose node wallet or reward tooling command %s', async method => {
+    await expect(handle(session, { method, params: [] })).rejects.toThrow('Unsupported');
+    expect(callRPC).not.toHaveBeenCalled();
+  },
+);
+
 test('missing transaction keeps the node code distinct from the WSS service code', async () => {
   callRPC.mockRejectedValue({ error: { code: -5, message: 'No such transaction' } });
   await expect(handle(session, { method: 'getrawtransaction', params: ['a'.repeat(64), true] }))

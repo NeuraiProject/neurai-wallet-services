@@ -26,7 +26,7 @@ const whitelist = [
   //"clearmempool",
   'decodeblock',
   'getbestblockhash',
-  'getblock',
+  'getblock', // verbosity 3 adds each input's prevout from undo data (audits silent-payment records)
   'getblockchaininfo',
   'getblockcount',
   //"getblockdeltas", // per-block address deltas: heavy on large blocks, not needed by wallets
@@ -46,6 +46,13 @@ const whitelist = [
   // bounded by the node: 1000 transitions and 1 MiB of raw transactions.
   'getprivacypoolinfo',
   'getprivacypoolupdates',
+  // NIP-047 light-client data (the node needs -silentpaymentindex): public
+  // tweaks and native v3 outputs per block. A receiver scans them with its own
+  // scan key, so the node learns nothing. Range pages are bounded by the node:
+  // 1000 blocks and 4 MB.
+  'getsilentpaymentindexinfo',
+  'getsilentpaymenttweaks',
+  'getsilentpaymenttweaksrange',
   'gettxout',
   'gettxoutproof',
   // "gettxoutsetinfo", // not dangerous but slow: opt-in, see EXTRA_METHODS
@@ -71,6 +78,9 @@ const whitelist = [
 
   //== Messages ==
   //"clearmessages",
+  // NIP-048 chain-wide channel index (the node needs -channelmessageindex), not
+  // the node wallet's messages. Pages are bounded by the node (limit, max 10000).
+  'getchannelmessages',
   //"sendmessage",
   //"subscribetochannel",
   //"unsubscribefromchannel",
@@ -139,14 +149,25 @@ const whitelist = [
     */
 
   //== Rewards ==
+  // Operator tooling for NIP-048 reward plans: snapshot management, plan
+  // computation over every holder, and createdistributionbatch, which funds and
+  // signs from the node wallet. replaysnapshot reads every block since asset
+  // activation. None of it is wallet data.
   /*
     "cancelsnapshotrequest",
+    "createdistributionbatch",
     "distributereward",
     "getdistributestatus",
+    "getdistributionbatches",
+    "getdistributionplan",
+    "getdistributionproof",
+    "getsnapshotannouncement",
+    "getsnapshotrecipients",
     "getsnapshotrequest",
     "listsnapshotrequests",
+    "replaysnapshot",
     "requestsnapshot",
-
+    "verifydistribution",
     */
 
   //== Util ==
@@ -205,11 +226,12 @@ const whitelist = [
     "addmultisigaddress",
     "addwitnessaddress",
     "backupwallet",
-    "bumpfee",
+    "decodesilentpaymentcode",
     "dumpextkeypq",
     "dumpprivkey",
     "dumpwallet",
     "encryptwallet",
+    "exportsilentpaymentviewkey",
     "exportxpqpub",
     "getaccount",
     "getaccountaddress",
@@ -221,6 +243,8 @@ const whitelist = [
     "getrawchangeaddress",
     "getreceivedbyaccount",
     "getreceivedbyaddress",
+    "getsilentpaymentcode",
+    "getsilentpaymentinfo",
     "gettransaction",
     "getunconfirmedbalance",
     "getwalletinfo",
@@ -229,6 +253,7 @@ const whitelist = [
     "importprivkey",
     "importprunedfunds",
     "importpubkey",
+    "importsilentpaymentviewkey",
     "importwallet",
     "keypoolrefill",
     "listaccounts",
@@ -237,6 +262,7 @@ const whitelist = [
     "listpqaddresses",
     "listreceivedbyaccount",
     "listreceivedbyaddress",
+    "listsilentpayments",
     "listsinceblock",
     "listtransactions",
     "listunspent",
@@ -244,10 +270,13 @@ const whitelist = [
     "lockunspent",
     "move",
     "removeprunedfunds",
+    "repairsilentpaymentidentity",
     "rescanblockchain",
+    "rescansilentpayments",
     "sendfrom",
     "sendfromaddress",
     "sendmany",
+    "sendsilentpayments",
     "sendtoaddress",
     "setaccount",
     "settxfee",

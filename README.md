@@ -705,7 +705,8 @@ Defaults (all overridable in `.env`):
   Mainnet ships with a `CHANGE-ME-mainnet-wss-token` placeholder —
   set `SERVICE_WSS_AUTH_TOKEN` in `.env` before any internet-facing run.
 - Testnet builds the node's `DePIN-Test` branch at `NODE_SOURCE_COMMIT`
-  (default `c665ba3106a9fa76436a3dadca002619eda5d3ea`: DePIN RPC 5, the C6 and
+  (default `7f1773e538c210212441bd723eb8ea3ba99a00ef`, the testnet reset of
+  2026-11-05: DePIN RPC 5, the C6 and
   C7 pools, the privacy-pool history RPCs `getprivacypoolinfo` and
   `getprivacypoolupdates`, the database read fixes, the silent payment and
   channel message indexes, which the compose turns on, and the no-RBF
@@ -1168,6 +1169,28 @@ upgrade takes longer while the node builds both indexes. Then check
 [1.2.0](#120-reset-testnet), and run the acceptance suite: it now fails when
 either index is missing.
 
+## 2.1.1: testnet reset of 2026-11-05
+
+Neurai reset its testnet again on 2026-11-05 (node `DePIN-Test`, commit
+`7f1773e538c210212441bd723eb8ea3ba99a00ef`). The chain name, ports, magic and
+address prefixes stay; the genesis is now
+`000000c710413a4265a996d30c86043aedef6a563900f1bc43fea61d5b2dc77d` and the
+node announces and requires protocol 70031, so nodes of the previous testnet
+cannot connect to it. Version 3 transactions announce reference inputs with
+serialization flag `0x02`; the service relays them unchanged.
+
+- `@neuraiproject/neurai-rpc` **0.9.1** publishes the new
+  `TESTNET_GENESIS_HASH`, which `network: "testnet"` pins. A node still on
+  the previous testnet is marked unhealthy with `unexpected genesis`.
+- `config.example.json`, the testnet compose (`NEURAI_EXPECTED_GENESIS`) and
+  the acceptance suite (`TEST_EXPECTED_GENESIS`) expect the new genesis.
+
+**Deploying.** Use a fresh node data volume: the previous one has another
+genesis block and the node refuses to start on it. Update
+`NODE_SOURCE_COMMIT` and `TEST_EXPECTED_GENESIS` in an existing
+`docker/testnet/.env` to the template values, rebuild, and run the
+acceptance suite.
+
 ## Published RPC 5 dependency
 
-This checkout uses the published `@neuraiproject/neurai-rpc@0.9.0`. Run `npm ci` before starting or testing; `package-lock.json` pins the registry tarball and its SHA-512 integrity. Docker installs the same dependency from the lockfile. No local package archives are required.
+This checkout uses the published `@neuraiproject/neurai-rpc@0.9.1`. Run `npm ci` before starting or testing; `package-lock.json` pins the registry tarball and its SHA-512 integrity. Docker installs the same dependency from the lockfile. No local package archives are required.

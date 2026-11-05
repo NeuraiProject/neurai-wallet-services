@@ -2,8 +2,8 @@
 // the previous testnet: only getblockhash(0) tells them apart. A service
 // configured with `network: "testnet"` must refuse a node still on the old
 // chain, using the genesis published by @neuraiproject/neurai-rpc.
-const OLD_TESTNET_GENESIS = '0000009697907b2aa409d4b1f10da0fa14f5a52a2e31faf3886c0444b3c85e84';
-const RESET_TESTNET_GENESIS = '0000008b384aeffecdab182575dc4e86c9f07f90318c65088532660ed9a8a021';
+const OLD_TESTNET_GENESIS = '0000008b384aeffecdab182575dc4e86c9f07f90318c65088532660ed9a8a021';
+const RESET_TESTNET_GENESIS = '000000c710413a4265a996d30c86043aedef6a563900f1bc43fea61d5b2dc77d';
 
 function loadNodes(config) {
   let nodes;

@@ -22,7 +22,7 @@ services:
         # @neuraiproject/neurai-rpc 0.9.0 documents.
         # Pinning it also forces Docker to rebuild instead of reusing a cached
         # clone of the branch from before the reset.
-        SOURCE_COMMIT: "${NODE_SOURCE_COMMIT:-c665ba3106a9fa76436a3dadca002619eda5d3ea}"
+        SOURCE_COMMIT: "${NODE_SOURCE_COMMIT:-7f1773e538c210212441bd723eb8ea3ba99a00ef}"
     restart: unless-stopped
 
     logging:
@@ -130,7 +130,7 @@ services:
       # fail until a matching node is healthy). hello and GET /settings
       # report it as genesis_hash.
       NEURAI_NETWORK: "testnet"
-      NEURAI_EXPECTED_GENESIS: "0000008b384aeffecdab182575dc4e86c9f07f90318c65088532660ed9a8a021"
+      NEURAI_EXPECTED_GENESIS: "000000c710413a4265a996d30c86043aedef6a563900f1bc43fea61d5b2dc77d"
       NEURAI_NODE_NAME: "neuraid-testnet"
       NEURAI_NODE_URL: "http://neuraid:${NODE_RPC_PORT:-19101}"
       NEURAI_RPC_USER: "${NODE_RPC_USER:-neurai}"

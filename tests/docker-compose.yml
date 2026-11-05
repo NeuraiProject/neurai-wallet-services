@@ -17,7 +17,7 @@ services:
       SERVICE_TOKEN: "${SERVICE_WSS_AUTH_TOKEN:-${PROXY_WSS_AUTH_TOKEN:-testnet-wss-token-do-not-use-in-production}}"
       # hello must report this genesis: the suite fails if the stack is still
       # serving the testnet from before the reset. Empty = skip the check.
-      EXPECTED_GENESIS: "${TEST_EXPECTED_GENESIS-0000008b384aeffecdab182575dc4e86c9f07f90318c65088532660ed9a8a021}"
+      EXPECTED_GENESIS: "${TEST_EXPECTED_GENESIS-000000c710413a4265a996d30c86043aedef6a563900f1bc43fea61d5b2dc77d}"
       # Optional funded addresses on the reset testnet (set them in .env).
       # Valid formats: t… (legacy), tnc1p… (AuthScript v1), tpq1z… (PQ v2),
       # tnq1r… (ECDSA v3). Empty values skip the happy-path address and asset

@@ -1,7 +1,7 @@
 {
   "service_id": "neurai-testnet-wallet-service",
   "network": "testnet",
-  "genesis_hash": "0000008b384aeffecdab182575dc4e86c9f07f90318c65088532660ed9a8a021",
+  "genesis_hash": "000000c710413a4265a996d30c86043aedef6a563900f1bc43fea61d5b2dc77d",
   "trusted_proxy_ips": ["127.0.0.1", "::1", "::ffff:127.0.0.1"],
   "rpc_timeout_ms": 30000,
   "rpc_method_timeouts_ms": { "gettxoutsetinfo": 600000 },
